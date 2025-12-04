@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/Feed.css";
-// import NotificationBell from "../components/NotificationBell"; 
+// Import her notification components
 import { getSocket } from "../components/NotificationBell";
-import Toast from "../components/Toast"; 
-import "../styles/Notifications.css"; 
+import Toast from "../components/Toast";
+import "../styles/Notifications.css";
 
 function Feed() {
   const [posts, setPosts] = useState([]);
@@ -14,13 +14,13 @@ function Feed() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [commentTexts, setCommentTexts] = useState({});
-  // ✅ FIX APPLIED: Changed to useState({}) to fix the crash
-  const [commentLoading, setCommentLoading] = useState({}); 
+  const [commentLoading, setCommentLoading] = useState({});
   const [activeCommentSection, setActiveCommentSection] = useState(null);
   
-  const [notifCount, setNotifCount] = useState(0); 
-  const [showNotifications, setShowNotifications] = useState(false); 
-  const [toastData, setToastData] = useState(null); 
+  // Her notification states
+  const [notifCount, setNotifCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [toastData, setToastData] = useState(null);
   
   const navigate = useNavigate();
 
@@ -37,11 +37,11 @@ function Feed() {
     setUser(userObj);
     fetchPosts();
 
-    // --- SOCKET/NOTIFICATION LOGIC STARTS HERE ---
+    // --- SOCKET/NOTIFICATION LOGIC (Her code) ---
     const socket = getSocket();
     if (socket) {
       // Listen for real-time new notifications
-      socket.on("new_notification", (payload) => { 
+      socket.on("new_notification", (payload) => {
         setNotifCount(c => c + 1);
 
         // Show toast popup
@@ -73,9 +73,9 @@ function Feed() {
         socket.off("new_notification");
       }
     };
-    // --- SOCKET/NOTIFICATION LOGIC ENDS HERE ---
+    // --- END SOCKET/NOTIFICATION LOGIC ---
 
-  }, [navigate]); 
+  }, [navigate]);
 
   const fetchPosts = async () => {
     try {
@@ -205,6 +205,38 @@ function Feed() {
     }
   };
 
+  // Your report post function
+  const handleReportPost = async (postId) => {
+    const reason = prompt("Please provide reason for reporting this post (harassment, spam, inappropriate content, etc.):");
+    
+    if (!reason || !reason.trim()) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ reason })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSuccess('✅ Post reported successfully! Admin will review it.');
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        setError(data.message || 'Failed to report post');
+      }
+    } catch (error) {
+      setError('Network error');
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -239,7 +271,7 @@ function Feed() {
     setActiveCommentSection(activeCommentSection === postId ? null : postId);
   };
 
-  // 🔥 FIX: This function now marks as read, resets badge, and NAVIGATES to the full page.
+  // Her notification click handler
   const handleClickNotification = async () => {
     const token = localStorage.getItem("token");
 
@@ -283,13 +315,13 @@ function Feed() {
             <button className="nav-btn">👥 Network</button>
             <button className="nav-btn">🔍 Explore</button>
             
-            {/* ✅ This is the single, combined Notifications button, now pointing to /notifications */}
+            {/* Her notification button */}
             <button 
               className={`nav-btn notification-bell-btn ${showNotifications ? 'active-bell' : ''}`}
-              onClick={handleClickNotification} 
+              onClick={handleClickNotification}
               title="Notifications"
             >
-              🔔Notifications
+              🔔 Notifications
               {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
             </button>
           </div>
@@ -305,7 +337,34 @@ function Feed() {
               {getUserAvatar(user)}
             </div>
           </div>
-          {/* The redundant notification icon/button is now removed from here */}
+          
+          {/* Your Admin button - Only show if user is admin */}
+          {user.role === 'admin' && (
+            <button 
+              className="admin-btn"
+              onClick={() => navigate("/admin")}
+              style={{
+                background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                color: 'white',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px',
+                marginRight: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
+              onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
+            >
+              👑 Admin
+            </button>
+          )}
+          
           <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
         </div>
       </header>
@@ -324,7 +383,7 @@ function Feed() {
         </div>
       )}
 
-      {/* Conditional Notification Panel/Modal - Now only opens via the Toast click */}
+      {/* Her notification panel */}
       {showNotifications && (
         <div className="notification-panel-overlay" onClick={() => setShowNotifications(false)}>
           <div className="notification-panel" onClick={(e) => e.stopPropagation()}>
@@ -345,8 +404,6 @@ function Feed() {
           </div>
         </div>
       )}
-      {/* END NEW NOTIFICATION PANEL */}
-
 
       <div className="feed-content">
         <div className="main-feed">
@@ -363,8 +420,8 @@ function Feed() {
             </div>
             <div className="user-role-badge">
               {user.role === 'student' && '🎓 Student'}
-              {user.role === 'faculty' && '👨‍🏫 Faculty'} 
-              {user.role === 'admin' && '⚙️ Admin'}
+              {user.role === 'faculty' && '👨‍🏫 Faculty'}
+              {user.role === 'admin' && '👑 Admin'}
             </div>
           </div>
 
@@ -438,7 +495,7 @@ function Feed() {
                             <span className="verified-badge" title="Faculty Member"> 👨‍🏫</span>
                           )}
                           {post.user?.role === 'admin' && (
-                            <span className="admin-badge" title="Administrator"> ⚙️</span>
+                            <span className="admin-badge" title="Administrator"> 👑</span>
                           )}
                         </div>
                         <div className="post-meta">
@@ -492,6 +549,14 @@ function Feed() {
                     </button>
                     <button className="action-btn share-btn">
                       🔄 Share
+                    </button>
+                    {/* Your Report button */}
+                    <button 
+                      className="action-btn report-btn"
+                      onClick={() => handleReportPost(post._id)}
+                      title="Report inappropriate content"
+                    >
+                      🚨 Report
                     </button>
                   </div>
 
@@ -563,7 +628,7 @@ function Feed() {
                 <p className="profile-role">
                   {user.role === 'student' && '🎓 Student'}
                   {user.role === 'faculty' && '👨‍🏫 Faculty'}
-                  {user.role === 'admin' && '⚙️ Administrator'}
+                  {user.role === 'admin' && '👑 Administrator'}
                 </p>
                 {user.department && (
                   <p className="profile-department">{user.department}</p>
@@ -607,15 +672,14 @@ function Feed() {
         </div>
       </div>
       
-      {/* Toast Component */}
+      {/* Her Toast Component */}
       <Toast
         notification={toastData}
         onClose={() => setToastData(null)}
-        // onOpen logic: clears toast, resets badge, and shows the mini-panel
         onOpen={() => {
-          setToastData(null); 
-          setNotifCount(0);  
-          setShowNotifications(true); 
+          setToastData(null);
+          setNotifCount(0);
+          setShowNotifications(true);
         }}
       />
     </div>
