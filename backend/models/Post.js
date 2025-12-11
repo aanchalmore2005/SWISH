@@ -1,3 +1,4 @@
+// backend/models/Post.js
 const mongoose = require('mongoose');
 
 const PostSchema = new mongoose.Schema({
@@ -7,10 +8,31 @@ const PostSchema = new mongoose.Schema({
     trim: true,
     maxlength: 2000
   },
-  imageUrl: {
-    type: String,
-    default: ''
-  },
+  
+  // UPDATED: Support multiple media files
+  media: [{
+    type: {
+      type: String,
+      enum: ['image', 'video'],
+      required: true
+    },
+    url: {
+      type: String,
+      required: true
+    },
+    thumbnail: String, // For video thumbnails
+    publicId: String, // Cloudinary public ID for deletion
+    width: Number,
+    height: Number,
+    duration: Number, // For videos in seconds
+    size: Number, // File size in bytes
+    format: String, // jpg, png, mp4, etc.
+    caption: {
+      type: String,
+      maxlength: 200
+    }
+  }],
+  
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -64,5 +86,9 @@ const PostSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Create index for better search performance
+PostSchema.index({ createdAt: -1 });
+PostSchema.index({ user: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Post', PostSchema);

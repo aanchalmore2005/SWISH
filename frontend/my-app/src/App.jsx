@@ -6,8 +6,8 @@ import Profile from "./components/Profile";
 import NotificationsPage from "./components/Notifications";
 import AdminDashboard from "./components/AdminDashboard";
 import Network from "./components/Network";
-import IncomingRequests from "./components/IncomingRequests";  // FIXED
-import Connections from "./components/Connections";            // FIXED
+import IncomingRequests from "./components/IncomingRequests";  
+import Connections from "./components/Connections";            
 import "./styles/global.css";
 import ProfilePage from "./components/ProfilePage";
 
@@ -23,8 +23,8 @@ function App() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/network" element={<Network />} />
-        <Route path="/requests" element={<IncomingRequests />} />   {/* FIXED */}
-        <Route path="/connections" element={<Connections />} />     {/* FIXED */}
+        <Route path="/requests" element={<IncomingRequests />} />   
+        <Route path="/connections" element={<Connections />} />     
         <Route path="/profile/:userId" element={<ProfilePage />} />
       </Routes>
     </Router>

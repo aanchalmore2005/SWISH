@@ -1,4 +1,4 @@
-// server.js - COMPLETE UPDATED VERSION WITH SEARCH FUNCTIONALITY & PROFILE ENDPOINTS
+// server.js - COMPLETE UPDATED VERSION WITH CLOUDINARY MEDIA UPLOAD
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ObjectId } = require("mongodb");
@@ -7,6 +7,8 @@ const jwt = require("jsonwebtoken");
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 require("dotenv").config();
 
@@ -32,8 +34,10 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Cloudinary Storage for Multer
-const storage = new CloudinaryStorage({
+// ==================== CLOUDINARY STORAGE CONFIGURATION ====================
+
+// Cloudinary Storage for Profile Photos
+const profileStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'campus-connect/profiles',
@@ -50,19 +54,79 @@ const storage = new CloudinaryStorage({
   },
 });
 
-const fileFilter = (req, file, cb) => {
+// Cloudinary Storage for Post Media (Images & Videos)
+const postMediaStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    
+    // Check file type
+    const isImage = file.mimetype.startsWith('image/');
+    const isVideo = file.mimetype.startsWith('video/');
+    
+    let folder = 'campus-connect/posts';
+    let resource_type = 'auto'; // Automatically detect image/video
+    let transformation = [];
+    
+    if (isImage) {
+      transformation = [
+        { width: 1200, height: 1200, crop: "limit" },
+        { quality: "auto:good" }
+      ];
+    } else if (isVideo) {
+      transformation = [
+        { quality: "auto:good" }
+      ];
+    }
+    
+    return {
+      folder: folder,
+      public_id: `post-media-${uniqueSuffix}`,
+      resource_type: resource_type,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'avi'],
+      transformation: transformation
+    };
+  }
+});
+
+// File filter for profile photos
+const profileFileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed!'), false);
+    cb(new Error('Only image files are allowed for profile photos!'), false);
   }
 };
 
-const upload = multer({ 
-  storage: storage,
-  fileFilter: fileFilter,
+// File filter for post media (images & videos)
+const mediaFileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+    'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'
+  ];
+  
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image and video files are allowed for posts!'), false);
+  }
+};
+
+// Create multer instances
+const profileUpload = multer({ 
+  storage: profileStorage,
+  fileFilter: profileFileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024
+    fileSize: 5 * 1024 * 1024 // 5MB for profile photos
+  }
+});
+
+const postMediaUpload = multer({
+  storage: postMediaStorage,
+  fileFilter: mediaFileFilter,
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB for videos
+    files: 10 // Max 10 files per upload
   }
 });
 
@@ -206,7 +270,7 @@ const createNotification = async ({ recipientId, senderId, type, postId = null, 
 // ==================== AUTH ROUTES ====================
 
 // Register with Cloudinary
-app.post("/api/auth/register", upload.single('profilePhoto'), async (req, res) => {
+app.post("/api/auth/register", profileUpload.single('profilePhoto'), async (req, res) => {
   try {
     const { 
       name, email, password, role, contact,
@@ -217,7 +281,8 @@ app.post("/api/auth/register", upload.single('profilePhoto'), async (req, res) =
 
     // Validate university email
     if (!email.endsWith('@sigce.edu')) {
-      if (req.file && req.file.path) {
+      if (req.file) {
+        // Delete uploaded file if email validation fails
         await cloudinary.uploader.destroy(req.file.filename);
       }
       return res.status(400).json({ message: 'Please use your SIGCE email (@sigce.edu)' });
@@ -226,7 +291,7 @@ app.post("/api/auth/register", upload.single('profilePhoto'), async (req, res) =
     // Check if user exists
     const existingUser = await db.collection('users').findOne({ email });
     if (existingUser) {
-      if (req.file && req.file.path) {
+      if (req.file) {
         await cloudinary.uploader.destroy(req.file.filename);
       }
       return res.status(400).json({ message: 'User already exists' });
@@ -234,7 +299,7 @@ app.post("/api/auth/register", upload.single('profilePhoto'), async (req, res) =
 
     // Validate admin code
     if (role === 'admin' && adminCode !== "CAMPUS2024") {
-      if (req.file && req.file.path) {
+      if (req.file) {
         await cloudinary.uploader.destroy(req.file.filename);
       }
       return res.status(400).json({ message: 'Invalid admin access code' });
@@ -246,7 +311,7 @@ app.post("/api/auth/register", upload.single('profilePhoto'), async (req, res) =
     // Handle profile photo
     let profilePhotoUrl = '';
     if (req.file) {
-      profilePhotoUrl = req.file.path;
+      profilePhotoUrl = req.file.path; // Cloudinary URL
     }
 
     const user = {
@@ -327,7 +392,7 @@ app.post("/api/auth/register", upload.single('profilePhoto'), async (req, res) =
       user: userResponse
     });
   } catch (error) {
-    if (req.file && req.file.path) {
+    if (req.file) {
       await cloudinary.uploader.destroy(req.file.filename);
     }
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -484,6 +549,358 @@ app.put("/api/auth/profile", auth, async (req, res) => {
   }
 });
 
+// ==================== MEDIA UPLOAD ROUTE FOR POSTS ====================
+
+// Create post with media upload (CLOUDINARY VERSION)
+app.post("/api/posts/upload", auth, postMediaUpload.array('media', 10), async (req, res) => {
+  console.log("📤 UPLOADING POST WITH MEDIA TO CLOUDINARY...");
+  
+  try {
+    const { content } = req.body;
+    const userId = req.user.userId;
+    const files = req.files || [];
+
+    console.log("Content:", content);
+    console.log("Files received:", files.length);
+    console.log("User ID:", userId);
+
+    // Validate content
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Post content is required' 
+      });
+    }
+
+    // Process uploaded files
+    const media = [];
+    if (files.length > 0) {
+      for (const file of files) {
+        console.log("Processing file:", file.originalname);
+        
+        // Cloudinary returns file info
+        media.push({
+          type: file.mimetype.startsWith('image/') ? 'image' : 'video',
+          url: file.path, // Cloudinary URL
+          publicId: file.filename,
+          format: file.mimetype.split('/')[1] || '',
+          size: file.size || 0,
+          uploadedAt: new Date()
+        });
+      }
+    }
+
+    console.log("Processed media:", media);
+
+    // Get user details
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    // Create post object
+    const post = {
+      content: content.trim(),
+      media: media,
+      userId: new ObjectId(userId),
+      likes: [],
+      comments: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    console.log("Saving post to database...");
+    
+    // Insert post into database
+    const result = await db.collection('posts').insertOne(post);
+    const postId = result.insertedId;
+
+    console.log("Post saved with ID:", postId);
+    
+    // Prepare response
+    const postResponse = {
+      _id: postId,
+      content: post.content,
+      media: post.media,
+      likes: post.likes,
+      comments: post.comments,
+      createdAt: post.createdAt,
+      user: {
+        id: user._id,
+        name: user.name,
+        profilePhoto: user.profilePhoto,
+        role: user.role,
+        department: user.department
+      }
+    };
+
+    console.log("✅ Post created successfully with media!");
+
+    res.status(201).json({
+      success: true,
+      message: 'Post created successfully with media!',
+      post: postResponse
+    });
+
+  } catch (error) {
+    console.error("❌ MEDIA UPLOAD ERROR:", error);
+    console.error("Error stack:", error.stack);
+    
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error uploading media',
+      error: error.message 
+    });
+  }
+});
+
+// ==================== POST ROUTES ====================
+
+// Create post (TEXT ONLY - original route)
+app.post("/api/posts", auth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    const userId = req.user.userId;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Post content is required' });
+    }
+
+    const post = {
+      content: content.trim(),
+      media: [], // Empty array for text-only posts
+      userId: new ObjectId(userId),
+      likes: [],
+      comments: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await db.collection('posts').insertOne(post);
+    
+    // Get user data for response
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    
+    const postResponse = {
+      _id: result.insertedId,
+      content: post.content,
+      media: post.media,
+      likes: post.likes,
+      comments: post.comments,
+      createdAt: post.createdAt,
+      user: {
+        id: user._id,
+        name: user.name,
+        profilePhoto: user.profilePhoto,
+        role: user.role,
+        department: user.department
+      }
+    };
+
+    res.status(201).json(postResponse);
+  } catch (error) {
+    console.error("Error creating post:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get all posts (updated to include media)
+app.get("/api/posts", auth, async (req, res) => {
+  try {
+    console.log("📥 GETTING ALL POSTS...");
+    
+    const posts = await db.collection('posts').find().sort({ createdAt: -1 }).toArray();
+    
+    console.log(`Found ${posts.length} posts`);
+    
+    const postsWithUsers = await Promise.all(
+      posts.map(async (post) => {
+        const user = await db.collection('users').findOne({ _id: new ObjectId(post.userId) });
+        return {
+          _id: post._id,
+          content: post.content,
+          media: post.media || [], // Include media array
+          likes: post.likes || [],
+          comments: post.comments || [],
+          createdAt: post.createdAt,
+          user: {
+            id: user?._id,
+            name: user?.name || "Unknown User",
+            profilePhoto: user?.profilePhoto,
+            role: user?.role,
+            department: user?.department
+          }
+        };
+      })
+    );
+
+    res.json(postsWithUsers);
+  } catch (error) {
+    console.error("Error fetching posts:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Like/unlike post
+app.post("/api/posts/:postId/like", auth, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.userId;
+
+    // Validate postId
+    if (!ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
+
+    const post = await db.collection("posts").findOne({ _id: new ObjectId(postId) });
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    const postOwnerId = post.userId.toString();
+
+    // convert likes to string for uniform comparison
+    const normalizedLikes = (post.likes || []).map(id => id.toString());
+
+    const alreadyLiked = normalizedLikes.includes(userId);
+
+    if (alreadyLiked) {
+      await db.collection("posts").updateOne(
+        { _id: new ObjectId(postId) },
+        { $pull: { likes: userId } }
+      );
+    } else {
+      await db.collection("posts").updateOne(
+        { _id: new ObjectId(postId) },
+        { $push: { likes: userId } }
+      );
+    }
+
+    // Get post again
+    const updatedPost = await db.collection("posts").findOne({ _id: new ObjectId(postId) });
+    const user = await db.collection("users").findOne({ _id: new ObjectId(updatedPost.userId) });
+
+    // SEND NOTIFICATION ONLY IF:
+    // 1. it's a new like AND
+    // 2. liker is NOT the owner
+    if (!alreadyLiked && userId !== postOwnerId) {
+      const liker = await db.collection("users").findOne(
+        { _id: new ObjectId(userId) },
+        { projection: { name: 1, profilePhoto: 1 } }
+      );
+
+      if (liker) { 
+        await createNotification({
+          recipientId: postOwnerId,
+          senderId: userId,
+          type: "like",
+          postId,
+          message: `${liker.name} liked your post`
+        });
+      }
+    }
+
+    res.json({
+      _id: updatedPost._id,
+      content: updatedPost.content,
+      media: updatedPost.media || [],
+      likes: updatedPost.likes || [],
+      comments: updatedPost.comments || [],
+      createdAt: updatedPost.createdAt,
+      user: {
+        id: user?._id,
+        name: user?.name || "Unknown User",
+        profilePhoto: user?.profilePhoto,
+        role: user?.role,
+        department: user?.department
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// Add comment to post
+app.post("/api/posts/:postId/comment", auth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    const postId = req.params.postId;
+    const userId = req.user.userId;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Comment content is required' });
+    }
+
+    // Validate postId
+    if (!ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
+
+    // Get user info for comment
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const comment = {
+      content: content.trim(),
+      userId: userId,
+      userName: user.name,
+      timestamp: new Date()
+    };
+
+    await db.collection('posts').updateOne(
+      { _id: new ObjectId(postId) },
+      { $push: { comments: comment } }
+    );
+
+    // Create notification for post owner if commenter is not the owner
+    if (userId !== post.userId.toString()) {
+      await createNotification({
+        recipientId: post.userId,
+        senderId: userId,
+        type: "comment",
+        postId,
+        message: `${user.name} commented on your post`
+      });
+    }
+
+    // Get updated post
+    const updatedPost = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    const postUser = await db.collection('users').findOne({ _id: new ObjectId(updatedPost.userId) });
+    
+    const postResponse = {
+      _id: updatedPost._id,
+      content: updatedPost.content,
+      media: updatedPost.media || [],
+      likes: updatedPost.likes || [],
+      comments: updatedPost.comments || [],
+      createdAt: updatedPost.createdAt,
+      user: {
+        id: postUser?._id,
+        name: postUser?.name || "Unknown User",
+        profilePhoto: postUser?.profilePhoto,
+        role: postUser?.role,
+        department: postUser?.department
+      }
+    };
+
+    res.json({
+      message: 'Comment added successfully',
+      post: postResponse
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // ==================== USER SEARCH ROUTES ====================
 
 // Search users by name or email (for the search bar) - WORKING VERSION
@@ -601,7 +1018,7 @@ app.get("/api/posts/search", auth, async (req, res) => {
         return {
           _id: post._id,
           content: post.content,
-          imageUrl: post.imageUrl,
+          media: post.media || [], // Include media
           likes: post.likes || [],
           comments: post.comments || [],
           createdAt: post.createdAt,
@@ -764,241 +1181,7 @@ app.get("/api/users", auth, async (req, res) => {
   }
 });
 
-// ==================== POST ROUTES ====================
-
-// Create post
-app.post("/api/posts", auth, async (req, res) => {
-  try {
-    const { content } = req.body;
-    const userId = req.user.userId;
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: 'Post content is required' });
-    }
-
-    const post = {
-      content: content.trim(),
-      userId: new ObjectId(userId),
-      likes: [],
-      comments: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    const result = await db.collection('posts').insertOne(post);
-    
-    // Get user data for response
-    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
-    
-    const postResponse = {
-      _id: result.insertedId,
-      content: post.content,
-      likes: post.likes,
-      comments: post.comments,
-      createdAt: post.createdAt,
-      user: {
-        id: user._id,
-        name: user.name,
-        profilePhoto: user.profilePhoto,
-        role: user.role,
-        department: user.department
-      }
-    };
-
-    res.status(201).json(postResponse);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// Get all posts
-app.get("/api/posts", auth, async (req, res) => {
-  try {
-    const posts = await db.collection('posts').find().sort({ createdAt: -1 }).toArray();
-    
-    const postsWithUsers = await Promise.all(
-      posts.map(async (post) => {
-        const user = await db.collection('users').findOne({ _id: new ObjectId(post.userId) });
-        return {
-          _id: post._id,
-          content: post.content,
-          imageUrl: post.imageUrl,
-          likes: post.likes || [],
-          comments: post.comments || [],
-          createdAt: post.createdAt,
-          user: {
-            id: user?._id,
-            name: user?.name || "Unknown User",
-            profilePhoto: user?.profilePhoto,
-            role: user?.role,
-            department: user?.department
-          }
-        };
-      })
-    );
-
-    res.json(postsWithUsers);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// Like/unlike post
-app.post("/api/posts/:postId/like", auth, async (req, res) => {
-  try {
-    const { postId } = req.params;
-    const userId = req.user.userId;
-
-    // Validate postId
-    if (!ObjectId.isValid(postId)) {
-      return res.status(400).json({ message: 'Invalid post ID' });
-    }
-
-    const post = await db.collection("posts").findOne({ _id: new ObjectId(postId) });
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    const postOwnerId = post.userId.toString();
-
-    // convert likes to string for uniform comparison
-    const normalizedLikes = (post.likes || []).map(id => id.toString());
-
-    const alreadyLiked = normalizedLikes.includes(userId);
-
-    if (alreadyLiked) {
-      await db.collection("posts").updateOne(
-        { _id: new ObjectId(postId) },
-        { $pull: { likes: userId } }
-      );
-    } else {
-      await db.collection("posts").updateOne(
-        { _id: new ObjectId(postId) },
-        { $push: { likes: userId } }
-      );
-    }
-
-    // Get post again
-    const updatedPost = await db.collection("posts").findOne({ _id: new ObjectId(postId) });
-    const user = await db.collection("users").findOne({ _id: new ObjectId(updatedPost.userId) });
-
-    // SEND NOTIFICATION ONLY IF:
-    // 1. it's a new like AND
-    // 2. liker is NOT the owner
-    if (!alreadyLiked && userId !== postOwnerId) {
-      const liker = await db.collection("users").findOne(
-        { _id: new ObjectId(userId) },
-        { projection: { name: 1, profilePhoto: 1 } }
-      );
-
-      if (liker) { 
-        await createNotification({
-          recipientId: postOwnerId,
-          senderId: userId,
-          type: "like",
-          postId,
-          message: `${liker.name} liked your post`
-        });
-      }
-    }
-
-    res.json({
-      _id: updatedPost._id,
-      content: updatedPost.content,
-      likes: updatedPost.likes || [],
-      comments: updatedPost.comments || [],
-      createdAt: updatedPost.createdAt,
-      user: {
-        id: user?._id,
-        name: user?.name || "Unknown User",
-        profilePhoto: user?.profilePhoto,
-        role: user?.role,
-        department: user?.department
-      }
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-});
-
-// Add comment to post
-app.post("/api/posts/:postId/comment", auth, async (req, res) => {
-  try {
-    const { content } = req.body;
-    const postId = req.params.postId;
-    const userId = req.user.userId;
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: 'Comment content is required' });
-    }
-
-    // Validate postId
-    if (!ObjectId.isValid(postId)) {
-      return res.status(400).json({ message: 'Invalid post ID' });
-    }
-
-    // Get user info for comment
-    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
-
-    const comment = {
-      content: content.trim(),
-      userId: userId,
-      userName: user.name,
-      timestamp: new Date()
-    };
-
-    await db.collection('posts').updateOne(
-      { _id: new ObjectId(postId) },
-      { $push: { comments: comment } }
-    );
-
-    // Create notification for post owner if commenter is not the owner
-    if (userId !== post.userId.toString()) {
-      await createNotification({
-        recipientId: post.userId,
-        senderId: userId,
-        type: "comment",
-        postId,
-        message: `${user.name} commented on your post`
-      });
-    }
-
-    // Get updated post
-    const updatedPost = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
-    const postUser = await db.collection('users').findOne({ _id: new ObjectId(updatedPost.userId) });
-    
-    const postResponse = {
-      _id: updatedPost._id,
-      content: updatedPost.content,
-      likes: updatedPost.likes || [],
-      comments: updatedPost.comments || [],
-      createdAt: updatedPost.createdAt,
-      user: {
-        id: postUser?._id,
-        name: postUser?.name || "Unknown User",
-        profilePhoto: postUser?.profilePhoto,
-        role: postUser?.role,
-        department: postUser?.department
-      }
-    };
-
-    res.json({
-      message: 'Comment added successfully',
-      post: postResponse
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// ==================== NETWORK ROUTES (INTEGRATED DIRECTLY) ====================
+// ==================== NETWORK ROUTES ====================
 
 // Send connection request (updated field names)
 app.post("/api/network/request/:userId", auth, async (req, res) => {
@@ -1692,7 +1875,7 @@ app.delete("/api/admin/users/:userId", auth, requireAdmin, async (req, res) => {
       senderId: req.user.userId,
       type: "account_deleted",
       message: `🚫 Your account was permanently deleted by admin. Reason: ${reason || "Violation of community guidelines"}`
-    });
+          });
     
     const result = await db.collection('users').deleteOne({ _id: new ObjectId(userId) });
     
@@ -1717,6 +1900,7 @@ app.get("/api/admin/posts", auth, requireAdmin, async (req, res) => {
         return {
           _id: post._id,
           content: post.content,
+          media: post.media || [],
           likesCount: post.likes?.length || 0,
           commentsCount: post.comments?.length || 0,
           createdAt: post.createdAt,
@@ -1826,6 +2010,7 @@ app.get("/api/admin/reports", auth, requireAdmin, async (req, res) => {
         return {
           _id: post._id,
           content: post.content,
+          media: post.media || [],
           createdAt: post.createdAt,
           reports: reportsWithDetails,
           totalReports: (post.reports || []).length,
@@ -2235,9 +2420,9 @@ app.delete("/api/notifications/:id", auth, async (req, res) => {
 app.get("/", (req, res) => {
   res.json({ 
     message: "Swish Backend API is running 🚀",
-    version: "1.4",
+    version: "1.6",
     campus: "SIGCE Campus",
-    features: "Two-way notification system active, User profiles, Search functionality"
+    features: "Two-way notification system active, User profiles, Search functionality, CLOUDINARY Media upload support"
   });
 });
 
@@ -2249,7 +2434,8 @@ app.get("/api/test", async (req, res) => {
       message: 'API is working!', 
       users: users.length,
       posts: posts.length,
-      campus: 'SIGCE Campus'
+      campus: 'SIGCE Campus',
+      media: 'Cloudinary uploads active'
     });
   } catch (error) {
     res.status(500).json({ message: 'Database error', error: error.message });
@@ -2257,4 +2443,4 @@ app.get("/api/test", async (req, res) => {
 });
 
 // Start server (use server, not app)
-server.listen(PORT, () => console.log(`🚀 Server (with Socket.IO & Admin & Two-Way Notifications & Profile System) running on port: ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server (with Socket.IO & Admin & Two-Way Notifications & Profile System & CLOUDINARY MEDIA UPLOAD) running on port: ${PORT}`));

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import VideoPlayer from "../components/VideoPlayer";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../styles/Feed.css";
 // Import her notification components
@@ -34,9 +35,26 @@ function Feed() {
   const [isProcessingHighlight, setIsProcessingHighlight] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   
+  // NEW: Media upload states
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [mediaPreviews, setMediaPreviews] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showMediaUploader, setShowMediaUploader] = useState(false);
+  
   const navigate = useNavigate();
   const location = useLocation();
   const hasCheckedHighlightRef = useRef(false);
+
+  // Cleanup preview URLs
+  useEffect(() => {
+    return () => {
+      mediaPreviews.forEach(preview => {
+        if (preview.url && preview.url.startsWith('blob:')) {
+          URL.revokeObjectURL(preview.url);
+        }
+      });
+    };
+  }, [mediaPreviews]);
 
   // Block ALL alerts
   useEffect(() => {
@@ -396,43 +414,134 @@ function Feed() {
     }
   }, [posts, highlightedPostId, isProcessingHighlight]);
 
-  // Handle post creation
+  // ==================== MEDIA UPLOAD FUNCTIONS ====================
+
+  // Handle file selection
+  const handleFileSelect = (e) => {
+    const files = e.target.files;
+    if (!files.length) return;
+
+    const fileArray = Array.from(files);
+    
+    // Create preview URLs
+    const newPreviews = fileArray.map(file => {
+      return {
+        file: file,
+        url: URL.createObjectURL(file),
+        type: file.type.startsWith('image/') ? 'image' : 'video',
+        name: file.name,
+        size: file.size
+      };
+    });
+    
+    setSelectedFiles(prev => [...prev, ...fileArray]);
+    setMediaPreviews(prev => [...prev, ...newPreviews]);
+    setShowMediaUploader(true);
+  };
+
+  // Remove a file
+  const handleRemoveFile = (index) => {
+    // Revoke object URL to prevent memory leak
+    if (mediaPreviews[index]?.url) {
+      URL.revokeObjectURL(mediaPreviews[index].url);
+    }
+    
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setMediaPreviews(prev => prev.filter((_, i) => i !== index));
+    
+    if (mediaPreviews.length <= 1) {
+      setShowMediaUploader(false);
+    }
+  };
+
+  // Toggle media uploader
+  const toggleMediaUploader = () => {
+    setShowMediaUploader(!showMediaUploader);
+  };
+
+  // ==================== POST CREATION ====================
+
+  // Handle post creation with media
   const handleCreatePost = async () => {
-    if (!newPost.trim() || !user) {
-      setError('Post cannot be empty');
+    if (!newPost.trim() && selectedFiles.length === 0) {
+      setError('Post content or media is required');
       return;
     }
 
     setLoading(true);
+    setIsUploading(true);
     setError("");
+
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/posts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          content: newPost
-        })
-      });
-
-      const data = await response.json();
       
-      if (response.ok) {
-        setNewPost("");
-        setSuccess('Post created successfully!');
-        setPosts(prevPosts => [data, ...prevPosts]);
-        setTimeout(() => setSuccess(""), 3000);
+      if (selectedFiles.length > 0) {
+        // Create FormData for media upload
+        const formData = new FormData();
+        formData.append('content', newPost.trim());
+        
+        // Append all selected files
+        selectedFiles.forEach((file, index) => {
+          formData.append('media', file);
+        });
+
+        const response = await fetch('http://localhost:5000/api/posts/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+            // Don't set Content-Type for FormData
+          },
+          body: formData
+        });
+
+        const data = await response.json();
+        
+        if (response.ok) {
+          handlePostSuccess(data);
+        } else {
+          setError(data.message || 'Failed to create post with media');
+        }
       } else {
-        setError(data.message || 'Failed to create post');
+        // Text-only post
+        const response = await fetch('http://localhost:5000/api/posts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            content: newPost.trim()
+          })
+        });
+
+        const data = await response.json();
+        
+        if (response.ok) {
+          handlePostSuccess(data);
+        } else {
+          setError(data.message || 'Failed to create post');
+        }
       }
     } catch (error) {
+      console.error('Create post error:', error);
       setError('Network error: ' + error.message);
     } finally {
       setLoading(false);
+      setIsUploading(false);
     }
+  };
+
+  // Handle successful post creation
+  const handlePostSuccess = (data) => {
+    // Clear everything
+    setNewPost("");
+    setSelectedFiles([]);
+    setMediaPreviews([]);
+    setShowMediaUploader(false);
+    
+    setSuccess('Post created successfully!');
+    setPosts(prevPosts => [data.post || data, ...prevPosts]);
+    setTimeout(() => setSuccess(""), 3000);
   };
 
   const handleLike = async (postId) => {
@@ -603,6 +712,38 @@ function Feed() {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  // Render media grid with LinkedIn-style video player
+const renderMediaGrid = (media) => {
+  if (!media || media.length === 0) return null;
+  
+  const count = media.length;
+  
+  return (
+    <div className={`post-media-grid count-${count}`}>
+      {media.map((mediaItem, index) => (
+        <div key={index} className={`media-item ${count === 1 ? 'single' : 'multiple'}`}>
+          {mediaItem.type === 'image' ? (
+            <img 
+              src={mediaItem.url} 
+              alt={`Post media ${index + 1}`}
+              className="post-media"
+              loading="lazy"
+            />
+          ) : (
+            <div className="video-container-linkedin">
+              <VideoPlayer 
+                src={mediaItem.url}
+                format={mediaItem.format}
+                type={mediaItem.type}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
   if (!user) {
     return (
       <div className="loading-container">
@@ -749,25 +890,93 @@ function Feed() {
                 onChange={(e) => setNewPost(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleCreatePost()}
                 maxLength={500}
+                disabled={isUploading}
               />
             </div>
+            
+            {/* Media Upload Section */}
+            {showMediaUploader && (
+              <div className="media-upload-section">
+                <div className="media-preview-container">
+                  {mediaPreviews.map((preview, index) => (
+                    <div key={index} className="media-preview-item">
+                      {preview.type === 'image' ? (
+                        <img src={preview.url} alt={`Preview ${index}`} />
+                      ) : (
+                        <div className="video-preview">
+                          <video src={preview.url} />
+                          <span className="video-icon">🎥</span>
+                        </div>
+                      )}
+                      <button 
+                        className="remove-media-btn"
+                        onClick={() => handleRemoveFile(index)}
+                        disabled={isUploading}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="media-upload-controls">
+                  <input
+                    type="file"
+                    id="media-upload"
+                    multiple
+                    accept="image/*,video/*"
+                    onChange={handleFileSelect}
+                    style={{ display: 'none' }}
+                    disabled={isUploading}
+                  />
+                  <label htmlFor="media-upload" className="add-more-btn">
+                    + Add More
+                  </label>
+                  <button 
+                    className="clear-all-btn"
+                    onClick={() => {
+                      mediaPreviews.forEach(preview => {
+                        if (preview.url) URL.revokeObjectURL(preview.url);
+                      });
+                      setSelectedFiles([]);
+                      setMediaPreviews([]);
+                      setShowMediaUploader(false);
+                    }}
+                    disabled={isUploading}
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+            )}
+            
             <div className="post-actions">
               <div className="post-features">
-                <button className="feature-btn" title="Add Image">🖼️</button>
-                <button className="feature-btn" title="Add Event">📅</button>
-                <button className="feature-btn" title="Add Poll">📊</button>
+                <button 
+                  className="feature-btn" 
+                  title="Add Photos/Videos"
+                  onClick={toggleMediaUploader}
+                  disabled={isUploading}
+                  style={{ 
+                    backgroundColor: showMediaUploader ? '#f1f5f9' : 'transparent',
+                    color: showMediaUploader ? '#4f46e5' : '#64748b'
+                  }}
+                >
+                  {mediaPreviews.length > 0 ? `🖼️ ${mediaPreviews.length}` : '🖼️'}
+                </button>
+                <button className="feature-btn" title="Add Event" disabled={isUploading}>📅</button>
+                <button className="feature-btn" title="Add Poll" disabled={isUploading}>📊</button>
               </div>
               <div className="post-submit-section">
                 <div className="char-count">{newPost.length}/500</div>
                 <button 
                   className="post-submit-btn" 
                   onClick={handleCreatePost}
-                  disabled={loading || !newPost.trim()}
+                  disabled={(loading || isUploading) || (!newPost.trim() && selectedFiles.length === 0)}
                 >
-                  {loading ? (
+                  {loading || isUploading ? (
                     <>
                       <div className="btn-spinner"></div>
-                      Posting...
+                      {isUploading ? 'Uploading...' : 'Posting...'}
                     </>
                   ) : (
                     '📝 Post'
@@ -865,7 +1074,12 @@ function Feed() {
 
                     <div className="post-content">
                       <p>{post.content}</p>
-                      {post.imageUrl && (
+                      
+                      {/* Display Media */}
+                      {post.media && post.media.length > 0 && renderMediaGrid(post.media)}
+                      
+                      {/* Legacy imageUrl support */}
+                      {post.imageUrl && !post.media && (
                         <div className="post-image">
                           <img src={post.imageUrl} alt="Post content" />
                         </div>
@@ -879,6 +1093,11 @@ function Feed() {
                       <span className="stat-item">
                         💬 {post.comments?.length || 0}
                       </span>
+                      {post.media && post.media.length > 0 && (
+                        <span className="stat-item">
+                          📷 {post.media.length}
+                        </span>
+                      )}
                     </div>
 
                     <div className="post-actions-buttons">

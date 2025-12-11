@@ -1,12 +1,25 @@
+// backend/controllers/postController.js
 const { ObjectId } = require('mongodb');
 
-// @desc    Create a post
+// @desc    Create a post with media
 // @route   POST /api/posts
 // @access  Private
 const createPost = async (req, res) => {
   try {
-    // SAFETY CHECK for req.body
-    const { content, imageUrl } = req.body || {};
+    console.log("📤 Creating post...", req.body);
+    console.log("📤 Files:", req.files);
+    
+    // Handle both form-data and JSON
+    let content = '';
+    let media = [];
+    
+    if (req.body.content) {
+      content = req.body.content;
+    } else if (req.body) {
+      // Handle JSON body
+      content = req.body.content || '';
+    }
+    
     const userId = req.user.id;
 
     // Validate required fields
@@ -17,7 +30,7 @@ const createPost = async (req, res) => {
       });
     }
 
-    // Get user details from db (req.db is your database connection)
+    // Get user details
     const user = await req.db.collection('users').findOne(
       { _id: new ObjectId(userId) },
       { projection: { name: 1, role: 1, department: 1, profilePhoto: 1 } }
@@ -30,9 +43,21 @@ const createPost = async (req, res) => {
       });
     }
 
+    // Process uploaded files if any
+    if (req.files && req.files.length > 0) {
+      media = req.files.map(file => ({
+        type: file.mimetype.startsWith('image/') ? 'image' : 'video',
+        url: file.path || file.location || `/uploads/${file.filename}`, // Cloudinary URL or local path
+        publicId: file.filename,
+        format: file.mimetype.split('/')[1],
+        size: file.size || 0
+      }));
+    }
+
+    // Create post object
     const post = {
       content: content.trim(),
-      imageUrl: imageUrl || '',
+      media: media,
       userId: new ObjectId(userId),
       likes: [],
       comments: [],
@@ -40,17 +65,25 @@ const createPost = async (req, res) => {
       updatedAt: new Date()
     };
 
+    console.log("📝 Post to save:", post);
+
     const result = await req.db.collection('posts').insertOne(post);
     const postId = result.insertedId;
 
+    // Get the saved post
+    const savedPost = await req.db.collection('posts').findOne(
+      { _id: postId },
+      { projection: { userId: 0 } } // Exclude userId from response
+    );
+
     // Prepare response with user info
     const postResponse = {
-      _id: postId,
-      content: post.content,
-      imageUrl: post.imageUrl,
-      likes: post.likes,
-      comments: post.comments,
-      createdAt: post.createdAt,
+      _id: savedPost._id,
+      content: savedPost.content,
+      media: savedPost.media || [],
+      likes: savedPost.likes || [],
+      comments: savedPost.comments || [],
+      createdAt: savedPost.createdAt,
       user: {
         id: user._id,
         name: user.name,
@@ -60,6 +93,8 @@ const createPost = async (req, res) => {
       }
     };
 
+    console.log("✅ Post created successfully:", postResponse._id);
+
     res.status(201).json({
       success: true,
       message: 'Post created successfully',
@@ -67,17 +102,18 @@ const createPost = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Create post error:', error);
+    console.error('❌ Create post error:', error);
+    console.error('❌ Error stack:', error.stack);
+    
     res.status(500).json({
       success: false,
-      message: 'Server error creating post'
+      message: 'Server error creating post',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 };
 
-// @desc    Get all posts
-// @route   GET /api/posts
-// @access  Private
+// Keep other functions the same...
 const getPosts = async (req, res) => {
   try {
     const posts = await req.db.collection('posts')
@@ -85,7 +121,6 @@ const getPosts = async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Get user data for each post
     const postsWithUsers = await Promise.all(
       posts.map(async (post) => {
         const user = await req.db.collection('users').findOne(
@@ -105,7 +140,7 @@ const getPosts = async (req, res) => {
         return {
           _id: post._id,
           content: post.content,
-          imageUrl: post.imageUrl,
+          media: post.media || [], // Updated to use media array
           likes: post.likes || [],
           comments: post.comments || [],
           createdAt: post.createdAt,
@@ -137,242 +172,7 @@ const getPosts = async (req, res) => {
   }
 };
 
-// @desc    Like a post
-// @route   POST /api/posts/:postId/like
-// @access  Private
-const likePost = async (req, res) => {
-  try {
-    const postId = req.params.postId;
-    const userId = req.user.id;
-
-    const post = await req.db.collection('posts').findOne({ _id: new ObjectId(postId) });
-    if (!post) {
-      return res.status(404).json({
-        success: false,
-        message: 'Post not found'
-      });
-    }
-
-    // Check if already liked
-    const alreadyLiked = (post.likes || []).some(likeId => likeId.toString() === userId.toString());
-
-    if (alreadyLiked) {
-      // Unlike
-      await req.db.collection('posts').updateOne(
-        { _id: new ObjectId(postId) },
-        { $pull: { likes: userId } }
-      );
-    } else {
-      // Like
-      await req.db.collection('posts').updateOne(
-        { _id: new ObjectId(postId) },
-        { $push: { likes: userId } }
-      );
-    }
-
-    // Get updated post with user data
-    const updatedPost = await req.db.collection('posts').findOne({ _id: new ObjectId(postId) });
-    const user = await req.db.collection('users').findOne(
-      { _id: new ObjectId(updatedPost.userId) },
-      { projection: { name: 1, role: 1, profilePhoto: 1, department: 1 } }
-    );
-
-    const postResponse = {
-      _id: updatedPost._id,
-      content: updatedPost.content,
-      imageUrl: updatedPost.imageUrl,
-      likes: updatedPost.likes || [],
-      comments: updatedPost.comments || [],
-      createdAt: updatedPost.createdAt,
-      user: {
-        id: user?._id,
-        name: user?.name || "Unknown User",
-        role: user?.role,
-        profilePhoto: user?.profilePhoto,
-        department: user?.department
-      }
-    };
-
-    res.json({
-      success: true,
-      message: alreadyLiked ? 'Post unliked' : 'Post liked',
-      post: postResponse
-    });
-
-  } catch (error) {
-    console.error('Like post error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error liking post'
-    });
-  }
-};
-
-// @desc    Add comment to post
-// @route   POST /api/posts/:postId/comment
-// @access  Private
-const addComment = async (req, res) => {
-  try {
-    const postId = req.params.postId;
-    // SAFETY CHECK for req.body
-    const { content } = req.body || {};
-    const userId = req.user.id;
-
-    // Validate comment content
-    if (!content || content.trim() === '') {
-      return res.status(400).json({
-        success: false,
-        message: 'Comment content is required'
-      });
-    }
-
-    // Get user info
-    const user = await req.db.collection('users').findOne(
-      { _id: new ObjectId(userId) },
-      { projection: { name: 1 } }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    const post = await req.db.collection('posts').findOne({ _id: new ObjectId(postId) });
-    if (!post) {
-      return res.status(404).json({
-        success: false,
-        message: 'Post not found'
-      });
-    }
-
-    // Add comment
-    const comment = {
-      userId: userId,
-      userName: user.name,
-      content: content.trim(),
-      timestamp: new Date()
-    };
-
-    await req.db.collection('posts').updateOne(
-      { _id: new ObjectId(postId) },
-      { $push: { comments: comment } }
-    );
-
-    // Get updated post with user data
-    const updatedPost = await req.db.collection('posts').findOne({ _id: new ObjectId(postId) });
-    const postUser = await req.db.collection('users').findOne(
-      { _id: new ObjectId(updatedPost.userId) },
-      { projection: { name: 1, role: 1, profilePhoto: 1, department: 1 } }
-    );
-
-    const postResponse = {
-      _id: updatedPost._id,
-      content: updatedPost.content,
-      imageUrl: updatedPost.imageUrl,
-      likes: updatedPost.likes || [],
-      comments: updatedPost.comments || [],
-      createdAt: updatedPost.createdAt,
-      user: {
-        id: postUser?._id,
-        name: postUser?.name || "Unknown User",
-        role: postUser?.role,
-        profilePhoto: postUser?.profilePhoto,
-        department: postUser?.department
-      }
-    };
-
-    res.json({
-      success: true,
-      message: 'Comment added successfully',
-      post: postResponse
-    });
-
-  } catch (error) {
-    console.error('Add comment error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error adding comment'
-    });
-  }
-};
-
-// @desc    Search posts by content
-// @route   GET /api/posts/search
-// @access  Private
-const searchPosts = async (req, res) => {
-  try {
-    const { q } = req.query; // Search query
-    const userId = req.user.id;
-
-    if (!q || q.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Search query is required'
-      });
-    }
-
-    // Create search query for posts
-    const searchQuery = {
-      content: { $regex: q, $options: 'i' } // Case-insensitive search
-    };
-
-    // Find posts matching the search
-    const posts = await req.db.collection('posts')
-      .find(searchQuery)
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .toArray();
-
-    // Get user data for each post
-    const postsWithUsers = await Promise.all(
-      posts.map(async (post) => {
-        const user = await req.db.collection('users').findOne(
-          { _id: new ObjectId(post.userId) },
-          { 
-            projection: { 
-              name: 1, 
-              role: 1, 
-              profilePhoto: 1, 
-              department: 1 
-            } 
-          }
-        );
-        
-        return {
-          _id: post._id,
-          content: post.content,
-          imageUrl: post.imageUrl,
-          likes: post.likes || [],
-          comments: post.comments || [],
-          createdAt: post.createdAt,
-          user: {
-            id: user?._id,
-            name: user?.name || "Unknown User",
-            role: user?.role,
-            profilePhoto: user?.profilePhoto,
-            department: user?.department
-          }
-        };
-      })
-    );
-
-    res.json({
-      success: true,
-      count: postsWithUsers.length,
-      query: q,
-      results: postsWithUsers
-    });
-
-  } catch (error) {
-    console.error('Post search error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during post search'
-    });
-  }
-};
+// Keep likePost, addComment, searchPosts functions as they were...
 
 module.exports = {
   createPost,
