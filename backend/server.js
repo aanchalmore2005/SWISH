@@ -1,4 +1,4 @@
-// server.js - COMPLETE UPDATED VERSION WITH CLOUDINARY MEDIA UPLOAD
+// server.js - COMPLETE UPDATED VERSION WITH EVENTS, POLLS, AND DELETE
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ObjectId } = require("mongodb");
@@ -25,7 +25,10 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://campusconnect-sigce.vercel.app'],
+  credentials: true
+}));
 
 // Cloudinary Configuration
 cloudinary.config({
@@ -144,6 +147,8 @@ const connectDB = async () => {
     await db.collection('posts').createIndex({ createdAt: -1 });
     await db.collection('posts').createIndex({ userId: 1 });
     await db.collection('notifications').createIndex({ recipientId: 1, createdAt: -1 });
+    await db.collection('posts').createIndex({ type: 1 }); // New index for post types
+    await db.collection('posts').createIndex({ "poll.question": "text", content: "text" }); // Text search index
     
   } catch (err) {
     console.error("❌ MongoDB connection failed", err);
@@ -549,26 +554,141 @@ app.put("/api/auth/profile", auth, async (req, res) => {
   }
 });
 
+// ==================== POST ROUTES WITH EVENT & POLL SUPPORT ====================
+
+// Create post (TEXT, EVENT, or POLL - without media)
+app.post("/api/posts", auth, async (req, res) => {
+  try {
+    const { content, type, event, poll } = req.body;
+    const userId = req.user.userId;
+
+    // Basic validation
+    if (!content && type !== 'poll') {
+      return res.status(400).json({ message: 'Post content is required for text and event posts' });
+    }
+
+    if (type === 'poll' && (!poll?.question || poll?.options?.length < 2)) {
+      return res.status(400).json({ message: 'Poll must have a question and at least 2 options' });
+    }
+
+    if (type === 'event' && (!event?.title || !event?.date || !event?.time || !event?.location)) {
+      return res.status(400).json({ message: 'Event must have title, date, time, and location' });
+    }
+
+    // Build post object
+    const post = {
+      content: content?.trim() || '',
+      type: type || 'text',
+      media: [],
+      userId: new ObjectId(userId),
+      likes: [],
+      comments: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    // Add event data if present
+    if (type === 'event' && event) {
+      const dateTime = new Date(`${event.date}T${event.time}`);
+      if (isNaN(dateTime.getTime())) {
+        return res.status(400).json({ message: 'Invalid event date/time' });
+      }
+      
+      post.event = {
+        title: event.title,
+        description: event.description || '',
+        dateTime: dateTime,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        maxAttendees: event.maxAttendees || null,
+        attendees: [],
+        rsvpCount: 0
+      };
+    }
+
+    // Add poll data if present
+    if (type === 'poll' && poll) {
+      post.poll = {
+        question: poll.question,
+        options: poll.options
+          .filter(opt => opt?.trim())
+          .map(option => ({
+            text: option.trim(),
+            votes: 0,
+            voters: []
+          })),
+        totalVotes: 0,
+        voters: []
+      };
+    }
+
+    const result = await db.collection('posts').insertOne(post);
+    
+    // Get user data for response
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    
+    const postResponse = {
+      _id: result.insertedId,
+      content: post.content,
+      type: post.type,
+      media: post.media,
+      likes: post.likes,
+      comments: post.comments,
+      createdAt: post.createdAt,
+      event: post.event || null,
+      poll: post.poll || null,
+      user: {
+        id: user._id,
+        name: user.name,
+        profilePhoto: user.profilePhoto,
+        role: user.role,
+        department: user.department
+      }
+    };
+
+    res.status(201).json(postResponse);
+  } catch (error) {
+    console.error("Error creating post:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // ==================== MEDIA UPLOAD ROUTE FOR POSTS ====================
 
-// Create post with media upload (CLOUDINARY VERSION)
+// Create post with media upload (supports event and poll too)
 app.post("/api/posts/upload", auth, postMediaUpload.array('media', 10), async (req, res) => {
   console.log("📤 UPLOADING POST WITH MEDIA TO CLOUDINARY...");
   
   try {
-    const { content } = req.body;
+    const { content, type, event, poll } = req.body;
     const userId = req.user.userId;
     const files = req.files || [];
 
     console.log("Content:", content);
+    console.log("Type:", type);
     console.log("Files received:", files.length);
     console.log("User ID:", userId);
 
-    // Validate content
-    if (!content || content.trim() === '') {
+    // Basic validation
+    if (!content && type !== 'poll') {
       return res.status(400).json({ 
         success: false,
-        message: 'Post content is required' 
+        message: 'Post content is required for text and event posts' 
+      });
+    }
+
+    if (type === 'poll' && (!poll?.question || poll?.options?.length < 2)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Poll must have a question and at least 2 options' 
+      });
+    }
+
+    if (type === 'event' && (!event?.title || !event?.date || !event?.time || !event?.location)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Event must have title, date, time, and location' 
       });
     }
 
@@ -578,7 +698,6 @@ app.post("/api/posts/upload", auth, postMediaUpload.array('media', 10), async (r
       for (const file of files) {
         console.log("Processing file:", file.originalname);
         
-        // Cloudinary returns file info
         media.push({
           type: file.mimetype.startsWith('image/') ? 'image' : 'video',
           url: file.path, // Cloudinary URL
@@ -601,9 +720,10 @@ app.post("/api/posts/upload", auth, postMediaUpload.array('media', 10), async (r
       });
     }
 
-    // Create post object
+    // Build post object
     const post = {
-      content: content.trim(),
+      content: content?.trim() || '',
+      type: type || 'text',
       media: media,
       userId: new ObjectId(userId),
       likes: [],
@@ -611,6 +731,45 @@ app.post("/api/posts/upload", auth, postMediaUpload.array('media', 10), async (r
       createdAt: new Date(),
       updatedAt: new Date()
     };
+
+    // Add event data if present
+    if (type === 'event' && event) {
+      const dateTime = new Date(`${event.date}T${event.time}`);
+      if (isNaN(dateTime.getTime())) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Invalid event date/time' 
+        });
+      }
+      
+      post.event = {
+        title: event.title,
+        description: event.description || '',
+        dateTime: dateTime,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        maxAttendees: event.maxAttendees || null,
+        attendees: [],
+        rsvpCount: 0
+      };
+    }
+
+    // Add poll data if present
+    if (type === 'poll' && poll) {
+      post.poll = {
+        question: poll.question,
+        options: poll.options
+          .filter(opt => opt?.trim())
+          .map(option => ({
+            text: option.trim(),
+            votes: 0,
+            voters: []
+          })),
+        totalVotes: 0,
+        voters: []
+      };
+    }
 
     console.log("Saving post to database...");
     
@@ -624,10 +783,13 @@ app.post("/api/posts/upload", auth, postMediaUpload.array('media', 10), async (r
     const postResponse = {
       _id: postId,
       content: post.content,
+      type: post.type,
       media: post.media,
       likes: post.likes,
       comments: post.comments,
       createdAt: post.createdAt,
+      event: post.event || null,
+      poll: post.poll || null,
       user: {
         id: user._id,
         name: user.name,
@@ -657,57 +819,66 @@ app.post("/api/posts/upload", auth, postMediaUpload.array('media', 10), async (r
   }
 });
 
-// ==================== POST ROUTES ====================
+// ==================== DELETE POST ROUTE ====================
 
-// Create post (TEXT ONLY - original route)
-app.post("/api/posts", auth, async (req, res) => {
+// Delete a post
+app.delete("/api/posts/:id", auth, async (req, res) => {
   try {
-    const { content } = req.body;
+    const postId = req.params.id;
     const userId = req.user.userId;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: 'Post content is required' });
+    // Validate postId
+    if (!ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'Invalid post ID' });
     }
 
-    const post = {
-      content: content.trim(),
-      media: [], // Empty array for text-only posts
-      userId: new ObjectId(userId),
-      likes: [],
-      comments: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
 
-    const result = await db.collection('posts').insertOne(post);
-    
-    // Get user data for response
+    // Check if user is owner or admin
     const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
-    
-    const postResponse = {
-      _id: result.insertedId,
-      content: post.content,
-      media: post.media,
-      likes: post.likes,
-      comments: post.comments,
-      createdAt: post.createdAt,
-      user: {
-        id: user._id,
-        name: user.name,
-        profilePhoto: user.profilePhoto,
-        role: user.role,
-        department: user.department
-      }
-    };
+    const isOwner = post.userId.toString() === userId;
+    const isAdmin = user.role === 'admin';
 
-    res.status(201).json(postResponse);
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ message: 'Not authorized to delete this post' });
+    }
+
+    // Delete associated media from Cloudinary
+    if (post.media && post.media.length > 0) {
+      for (const mediaItem of post.media) {
+        try {
+          await cloudinary.uploader.destroy(mediaItem.publicId, {
+            resource_type: mediaItem.type === 'video' ? 'video' : 'image'
+          });
+          console.log(`Deleted media from Cloudinary: ${mediaItem.publicId}`);
+        } catch (cloudinaryError) {
+          console.error(`Error deleting media from Cloudinary: ${cloudinaryError.message}`);
+          // Continue with post deletion even if media deletion fails
+        }
+      }
+    }
+
+    // Delete the post from database
+    const result = await db.collection('posts').deleteOne({ _id: new ObjectId(postId) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    res.json({ 
+      success: true,
+      message: 'Post deleted successfully' 
+    });
   } catch (error) {
-    console.error("Error creating post:", error);
+    console.error("Error deleting post:", error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-// Get all posts (updated to include media)
+// Get all posts (updated to include type, event, and poll)
 app.get("/api/posts", auth, async (req, res) => {
   try {
     console.log("📥 GETTING ALL POSTS...");
@@ -722,9 +893,12 @@ app.get("/api/posts", auth, async (req, res) => {
         return {
           _id: post._id,
           content: post.content,
-          media: post.media || [], // Include media array
+          type: post.type || 'text',
+          media: post.media || [],
           likes: post.likes || [],
           comments: post.comments || [],
+          event: post.event || null,
+          poll: post.poll || null,
           createdAt: post.createdAt,
           user: {
             id: user?._id,
@@ -740,6 +914,241 @@ app.get("/api/posts", auth, async (req, res) => {
     res.json(postsWithUsers);
   } catch (error) {
     console.error("Error fetching posts:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ==================== EVENT RSVP ROUTE ====================
+
+// RSVP to an event
+app.post("/api/posts/:id/rsvp", auth, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const userId = req.user.userId;
+    const { status } = req.body; // 'going', 'maybe', 'not-going'
+
+    // Validate postId
+    if (!ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
+
+    if (!['going', 'maybe', 'not-going'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid RSVP status' });
+    }
+
+    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    if (post.type !== 'event') {
+      return res.status(400).json({ message: 'This post is not an event' });
+    }
+
+    // Check if event has max attendees
+    if (status === 'going' && post.event.maxAttendees) {
+      const goingCount = post.event.attendees.filter(a => a.status === 'going').length;
+      if (goingCount >= post.event.maxAttendees) {
+        return res.status(400).json({ message: 'Event is at full capacity' });
+      }
+    }
+
+    // Remove existing RSVP if exists
+    const updatedAttendees = post.event.attendees.filter(
+      attendee => attendee.userId.toString() !== userId
+    );
+
+    // Add new RSVP
+    updatedAttendees.push({
+      userId: userId,
+      status: status,
+      timestamp: new Date()
+    });
+
+    // Calculate RSVP counts
+    const goingCount = updatedAttendees.filter(a => a.status === 'going').length;
+    const maybeCount = updatedAttendees.filter(a => a.status === 'maybe').length;
+
+    // Update the post
+    const updateResult = await db.collection('posts').updateOne(
+      { _id: new ObjectId(postId) },
+      { 
+        $set: { 
+          "event.attendees": updatedAttendees,
+          "event.rsvpCount": goingCount + maybeCount,
+          "event.goingCount": goingCount,
+          "event.maybeCount": maybeCount
+        } 
+      }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.status(400).json({ message: 'Failed to update RSVP' });
+    }
+
+    // Get updated post
+    const updatedPost = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    const user = await db.collection('users').findOne({ _id: new ObjectId(updatedPost.userId) });
+
+    // Create notification for event creator if not the same user
+    if (userId !== post.userId.toString()) {
+      const rsvpUser = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+      await createNotification({
+        recipientId: post.userId.toString(),
+        senderId: userId,
+        type: "event_rsvp",
+        postId: postId,
+        message: `${rsvpUser.name} RSVP'd ${status} to your event "${post.event.title}"`
+      });
+    }
+
+    const postResponse = {
+      _id: updatedPost._id,
+      content: updatedPost.content,
+      type: updatedPost.type,
+      media: updatedPost.media || [],
+      likes: updatedPost.likes || [],
+      comments: updatedPost.comments || [],
+      event: updatedPost.event || null,
+      poll: updatedPost.poll || null,
+      createdAt: updatedPost.createdAt,
+      user: {
+        id: user?._id,
+        name: user?.name || "Unknown User",
+        profilePhoto: user?.profilePhoto,
+        role: user?.role,
+        department: user?.department
+      }
+    };
+
+    res.json({
+      success: true,
+      message: `RSVP ${status} successful!`,
+      post: postResponse
+    });
+  } catch (error) {
+    console.error("Error updating RSVP:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ==================== POLL VOTING ROUTE ====================
+
+// Vote on a poll
+app.post("/api/posts/:id/vote", auth, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const userId = req.user.userId;
+    const { optionIndex } = req.body;
+
+    // Validate postId
+    if (!ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
+
+    if (typeof optionIndex !== 'number' || optionIndex < 0) {
+      return res.status(400).json({ message: 'Invalid option index' });
+    }
+
+    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    if (post.type !== 'poll') {
+      return res.status(400).json({ message: 'This post is not a poll' });
+    }
+
+    // Check if option exists
+    if (!post.poll.options[optionIndex]) {
+      return res.status(400).json({ message: 'Invalid option index' });
+    }
+
+    // Check if user already voted
+    const existingVoteIndex = post.poll.voters.findIndex(v => v.userId.toString() === userId);
+    
+    // If user already voted, remove their previous vote
+    if (existingVoteIndex > -1) {
+      const previousOptionIndex = post.poll.voters[existingVoteIndex].optionIndex;
+      post.poll.options[previousOptionIndex].votes--;
+      post.poll.options[previousOptionIndex].voters = post.poll.options[previousOptionIndex].voters.filter(
+        v => v.userId.toString() !== userId
+      );
+      post.poll.voters.splice(existingVoteIndex, 1);
+      post.poll.totalVotes--;
+    }
+
+    // Add new vote
+    post.poll.options[optionIndex].votes++;
+    post.poll.options[optionIndex].voters.push({
+      userId: userId,
+      timestamp: new Date()
+    });
+
+    post.poll.voters.push({
+      userId: userId,
+      optionIndex: optionIndex,
+      timestamp: new Date()
+    });
+
+    post.poll.totalVotes++;
+
+    // Update the post
+    const updateResult = await db.collection('posts').updateOne(
+      { _id: new ObjectId(postId) },
+      { 
+        $set: { 
+          poll: post.poll
+        } 
+      }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.status(400).json({ message: 'Failed to update vote' });
+    }
+
+    // Get updated post
+    const updatedPost = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    const user = await db.collection('users').findOne({ _id: new ObjectId(updatedPost.userId) });
+
+    // Create notification for poll creator if not the same user
+    if (userId !== post.userId.toString()) {
+      const voter = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+      await createNotification({
+        recipientId: post.userId.toString(),
+        senderId: userId,
+        type: "poll_vote",
+        postId: postId,
+        message: `${voter.name} voted on your poll "${post.poll.question}"`
+      });
+    }
+
+    const postResponse = {
+      _id: updatedPost._id,
+      content: updatedPost.content,
+      type: updatedPost.type,
+      media: updatedPost.media || [],
+      likes: updatedPost.likes || [],
+      comments: updatedPost.comments || [],
+      event: updatedPost.event || null,
+      poll: updatedPost.poll || null,
+      createdAt: updatedPost.createdAt,
+      user: {
+        id: user?._id,
+        name: user?.name || "Unknown User",
+        profilePhoto: user?.profilePhoto,
+        role: user?.role,
+        department: user?.department
+      }
+    };
+
+    res.json({
+      success: true,
+      message: 'Vote submitted successfully!',
+      post: postResponse
+    });
+  } catch (error) {
+    console.error("Error updating vote:", error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -804,9 +1213,12 @@ app.post("/api/posts/:postId/like", auth, async (req, res) => {
     res.json({
       _id: updatedPost._id,
       content: updatedPost.content,
+      type: updatedPost.type || 'text',
       media: updatedPost.media || [],
       likes: updatedPost.likes || [],
       comments: updatedPost.comments || [],
+      event: updatedPost.event || null,
+      poll: updatedPost.poll || null,
       createdAt: updatedPost.createdAt,
       user: {
         id: user?._id,
@@ -853,6 +1265,7 @@ app.post("/api/posts/:postId/comment", auth, async (req, res) => {
       content: content.trim(),
       userId: userId,
       userName: user.name,
+      userProfilePhoto: user.profilePhoto,
       timestamp: new Date()
     };
 
@@ -879,9 +1292,12 @@ app.post("/api/posts/:postId/comment", auth, async (req, res) => {
     const postResponse = {
       _id: updatedPost._id,
       content: updatedPost.content,
+      type: updatedPost.type || 'text',
       media: updatedPost.media || [],
       likes: updatedPost.likes || [],
       comments: updatedPost.comments || [],
+      event: updatedPost.event || null,
+      poll: updatedPost.poll || null,
       createdAt: updatedPost.createdAt,
       user: {
         id: postUser?._id,
@@ -1001,7 +1417,11 @@ app.get("/api/posts/search", auth, async (req, res) => {
 
     // Create search query for posts
     const searchQuery = {
-      content: { $regex: q, $options: 'i' } // Case-insensitive search
+      $or: [
+        { content: { $regex: q, $options: 'i' } }, // Search in content
+        { "event.title": { $regex: q, $options: 'i' } }, // Search in event titles
+        { "poll.question": { $regex: q, $options: 'i' } } // Search in poll questions
+      ]
     };
 
     // Find posts matching the search
@@ -1018,9 +1438,12 @@ app.get("/api/posts/search", auth, async (req, res) => {
         return {
           _id: post._id,
           content: post.content,
-          media: post.media || [], // Include media
+          type: post.type || 'text',
+          media: post.media || [],
           likes: post.likes || [],
           comments: post.comments || [],
+          event: post.event || null,
+          poll: post.poll || null,
           createdAt: post.createdAt,
           user: {
             id: user?._id,
@@ -1045,15 +1468,15 @@ app.get("/api/posts/search", auth, async (req, res) => {
   }
 });
 
-// ==================== USER PROFILE ENDPOINTS (FOR PROFILE PAGE) ====================
+// ==================== USER PROFILE ENDPOINTS ====================
 
-// Get user by ID (for viewing other users' profiles) - FIXED VERSION
+// Get user by ID (for viewing other users' profiles)
 app.get("/api/users/:userId", auth, async (req, res) => {
   try {
     const { userId } = req.params;
     const currentUserId = req.user.userId;
 
-    // Validate userId is a valid ObjectId (24 character hex string)
+    // Validate userId is a valid ObjectId
     if (!ObjectId.isValid(userId)) {
       return res.status(400).json({ message: 'Invalid user ID format' });
     }
@@ -1095,7 +1518,7 @@ app.get("/api/users/:userId", auth, async (req, res) => {
   }
 });
 
-// Get user's posts for profile page - FIXED VERSION
+// Get user's posts for profile page
 app.get("/api/users/:userId/posts", auth, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -1875,7 +2298,7 @@ app.delete("/api/admin/users/:userId", auth, requireAdmin, async (req, res) => {
       senderId: req.user.userId,
       type: "account_deleted",
       message: `🚫 Your account was permanently deleted by admin. Reason: ${reason || "Violation of community guidelines"}`
-          });
+    });
     
     const result = await db.collection('users').deleteOne({ _id: new ObjectId(userId) });
     
@@ -1900,9 +2323,12 @@ app.get("/api/admin/posts", auth, requireAdmin, async (req, res) => {
         return {
           _id: post._id,
           content: post.content,
+          type: post.type || 'text',
           media: post.media || [],
           likesCount: post.likes?.length || 0,
           commentsCount: post.comments?.length || 0,
+          event: post.event || null,
+          poll: post.poll || null,
           createdAt: post.createdAt,
           user: {
             id: user?._id,
@@ -1936,6 +2362,21 @@ app.delete("/api/admin/posts/:postId", auth, requireAdmin, async (req, res) => {
       return res.status(404).json({ message: 'Post not found' });
     }
     
+    // Delete associated media from Cloudinary
+    if (post.media && post.media.length > 0) {
+      for (const mediaItem of post.media) {
+        try {
+          await cloudinary.uploader.destroy(mediaItem.publicId, {
+            resource_type: mediaItem.type === 'video' ? 'video' : 'image'
+          });
+          console.log(`Deleted media from Cloudinary: ${mediaItem.publicId}`);
+        } catch (cloudinaryError) {
+          console.error(`Error deleting media from Cloudinary: ${cloudinaryError.message}`);
+          // Continue with post deletion even if media deletion fails
+        }
+      }
+    }
+    
     const result = await db.collection('posts').deleteOne({ _id: new ObjectId(postId) });
     
     if (result.deletedCount === 0) {
@@ -1966,6 +2407,11 @@ app.get("/api/admin/stats", auth, requireAdmin, async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const postsToday = await db.collection('posts').countDocuments({ createdAt: { $gte: today } });
     
+    // Count posts by type
+    const textPosts = await db.collection('posts').countDocuments({ type: 'text' });
+    const eventPosts = await db.collection('posts').countDocuments({ type: 'event' });
+    const pollPosts = await db.collection('posts').countDocuments({ type: 'poll' });
+    
     // User breakdown by role
     const students = await db.collection('users').countDocuments({ role: 'student' });
     const faculty = await db.collection('users').countDocuments({ role: 'faculty' });
@@ -1975,6 +2421,7 @@ app.get("/api/admin/stats", auth, requireAdmin, async (req, res) => {
       totalUsers,
       totalPosts,
       postsToday,
+      postsByType: { text: textPosts, event: eventPosts, poll: pollPosts },
       usersByRole: { students, faculty, admins }
     });
   } catch (error) {
@@ -2010,7 +2457,10 @@ app.get("/api/admin/reports", auth, requireAdmin, async (req, res) => {
         return {
           _id: post._id,
           content: post.content,
+          type: post.type || 'text',
           media: post.media || [],
+          event: post.event || null,
+          poll: post.poll || null,
           createdAt: post.createdAt,
           reports: reportsWithDetails,
           totalReports: (post.reports || []).length,
@@ -2059,6 +2509,20 @@ app.post("/api/admin/reports/:postId/resolve", auth, requireAdmin, async (req, r
 
     // If action is 'delete', delete the post and notify
     if (action === 'delete') {
+      // Delete associated media from Cloudinary
+      if (post.media && post.media.length > 0) {
+        for (const mediaItem of post.media) {
+          try {
+            await cloudinary.uploader.destroy(mediaItem.publicId, {
+              resource_type: mediaItem.type === 'video' ? 'video' : 'image'
+            });
+            console.log(`Deleted media from Cloudinary: ${mediaItem.publicId}`);
+          } catch (cloudinaryError) {
+            console.error(`Error deleting media from Cloudinary: ${cloudinaryError.message}`);
+          }
+        }
+      }
+      
       await db.collection('posts').deleteOne({ _id: new ObjectId(postId) });
       
       // Notify post owner
@@ -2271,6 +2735,18 @@ app.get("/api/admin/analytics", auth, requireAdmin, async (req, res) => {
         { $limit: 10 }
       ]).toArray();
 
+    // Posts by type
+    const postsByType = await db.collection('posts')
+      .aggregate([
+        {
+          $group: {
+            _id: "$type",
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } }
+      ]).toArray();
+
     // Posts by department
     const postsByDept = await db.collection('posts')
       .aggregate([
@@ -2295,6 +2771,7 @@ app.get("/api/admin/analytics", auth, requireAdmin, async (req, res) => {
     res.json({
       dailyPosts,
       topUsers,
+      postsByType,
       postsByDept,
       generatedAt: new Date()
     });
@@ -2415,14 +2892,59 @@ app.delete("/api/notifications/:id", auth, async (req, res) => {
   }
 });
 
+// ==================== STATS ENDPOINT ====================
+
+// Get campus stats (like in the image)
+app.get("/api/stats", auth, async (req, res) => {
+  try {
+    const totalPosts = await db.collection('posts').countDocuments();
+    const totalUsers = await db.collection('users').countDocuments();
+    const activeUsers = await db.collection('users').countDocuments({
+      lastActive: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+    });
+
+    // Get current user stats
+    const userId = req.user.userId;
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    
+    const userPosts = await db.collection('posts').countDocuments({ userId: new ObjectId(userId) });
+    
+    // Calculate total likes on user's posts
+    const userPostsData = await db.collection('posts')
+      .find({ userId: new ObjectId(userId) })
+      .toArray();
+    
+    let totalUserLikes = 0;
+    userPostsData.forEach(post => {
+      totalUserLikes += post.likes?.length || 0;
+    });
+
+    res.json({
+      campusStats: {
+        totalPosts,
+        totalUsers,
+        activeUsers
+      },
+      userStats: {
+        posts: userPosts,
+        likes: totalUserLikes,
+        connections: user?.connections?.length || 0
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching stats:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // ==================== TEST ROUTES ====================
 
 app.get("/", (req, res) => {
   res.json({ 
     message: "Swish Backend API is running 🚀",
-    version: "1.6",
+    version: "2.0",
     campus: "SIGCE Campus",
-    features: "Two-way notification system active, User profiles, Search functionality, CLOUDINARY Media upload support"
+    features: "Complete Event & Poll System, Cloudinary Media Upload, Real-time Notifications, Admin Dashboard, Post Deletion"
   });
 });
 
@@ -2430,10 +2952,21 @@ app.get("/api/test", async (req, res) => {
   try {
     const users = await db.collection('users').find().toArray();
     const posts = await db.collection('posts').find().toArray();
+    
+    // Count posts by type
+    const textPosts = await db.collection('posts').countDocuments({ type: 'text' });
+    const eventPosts = await db.collection('posts').countDocuments({ type: 'event' });
+    const pollPosts = await db.collection('posts').countDocuments({ type: 'poll' });
+    
     res.json({ 
       message: 'API is working!', 
       users: users.length,
       posts: posts.length,
+      postTypes: {
+        text: textPosts,
+        event: eventPosts,
+        poll: pollPosts
+      },
       campus: 'SIGCE Campus',
       media: 'Cloudinary uploads active'
     });
@@ -2442,5 +2975,14 @@ app.get("/api/test", async (req, res) => {
   }
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error("❌ Global Error:", err);
+  res.status(500).json({
+    message: "Internal server error",
+    error: process.env.NODE_ENV === "development" ? err.message : undefined
+  });
+});
+
 // Start server (use server, not app)
-server.listen(PORT, () => console.log(`🚀 Server (with Socket.IO & Admin & Two-Way Notifications & Profile System & CLOUDINARY MEDIA UPLOAD) running on port: ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on port: ${PORT} with Complete Event & Poll System`));

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import VideoPlayer from "../components/VideoPlayer";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../styles/Feed.css";
@@ -41,9 +41,29 @@ function Feed() {
   const [isUploading, setIsUploading] = useState(false);
   const [showMediaUploader, setShowMediaUploader] = useState(false);
   
+  // NEW: Event and Poll states
+  const [postType, setPostType] = useState('text'); // 'text', 'event', 'poll'
+  const [eventData, setEventData] = useState({
+    title: '',
+    description: '',
+    date: '',
+    time: '',
+    location: '',
+    maxAttendees: ''
+  });
+  const [pollData, setPollData] = useState({
+    question: '',
+    options: ['', '']
+  });
+  
+  // NEW: Event RSVP and Poll voting states
+  const [rsvpLoading, setRsvpLoading] = useState({});
+  const [voteLoading, setVoteLoading] = useState({});
+  
   const navigate = useNavigate();
   const location = useLocation();
   const hasCheckedHighlightRef = useRef(false);
+  const fileInputRef = useRef(null);
 
   // Cleanup preview URLs
   useEffect(() => {
@@ -143,87 +163,76 @@ function Feed() {
     };
   }, []);
 
-  // Main initialization effect - runs on mount AND when refreshTrigger changes
-  useEffect(() => {
-    console.log("🔍 [Feed] Component mounted or refreshTrigger changed", { refreshTrigger });
-    
-    const userData = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    
-    if (!userData || !token) {
-      navigate("/");
+  // Combined scroll and highlight function
+  const scrollAndHighlightPost = useCallback((postId) => {
+    if (!postId) {
+      console.log("⏭️ [Feed] No post ID to scroll to");
+      setIsProcessingHighlight(false);
       return;
     }
-
-    const userObj = JSON.parse(userData);
-    setUser(userObj);
     
-    // Reset the check flag
-    hasCheckedHighlightRef.current = false;
-    setIsProcessingHighlight(false);
+    console.log("🎯 [Feed] Attempting to scroll and highlight post:", postId);
     
-    // Fetch posts
-    fetchPosts();
-
-    // --- SOCKET/NOTIFICATION LOGIC ---
-    const socket = getSocket();
-    if (socket) {
-      socket.on("new_notification", (payload) => {
-        setNotifCount(c => c + 1);
-        setToastData({
-          userName: payload.userName || "New Activity",
-          message: payload.message || "You have a new notification.",
-          userImage: payload.userImage,
-          timeAgo: "just now"
+    const elementId = `post-${postId}`;
+    
+    // Try multiple times with increasing delays
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    const tryScrollAndHighlight = () => {
+      attempts++;
+      const element = document.getElementById(elementId);
+      console.log(`🔍 [Feed] Attempt ${attempts}: Element found?`, !!element);
+      
+      if (element) {
+        console.log("✅ [Feed] Found element! Scrolling and highlighting...");
+        
+        // Add highlight styles
+        element.style.border = '3px solid #007bff';
+        element.style.backgroundColor = '#f0f8ff';
+        element.style.boxShadow = '0 0 20px rgba(0, 123, 255, 0.3)';
+        element.style.transition = 'all 0.3s ease';
+        
+        // Scroll to element
+        element.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center'
         });
-      });
-
-      const fetchInitialCount = async () => {
-        try {
-          const response = await fetch("http://localhost:5000/api/notifications/unread/count", {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const data = await response.json();
-          setNotifCount(data.count || 0);
-        } catch (error) {
-          console.error("Failed to fetch initial notification count:", error);
-        }
-      };
-      fetchInitialCount();
-    }
-
-    return () => {
-      if (socket) {
-        socket.off("new_notification");
+        
+        // Remove highlight after 4 seconds
+        setTimeout(() => {
+          element.style.boxShadow = '0 0 10px rgba(0, 123, 255, 0.1)';
+          setTimeout(() => {
+            element.style.border = '';
+            element.style.backgroundColor = '';
+            element.style.boxShadow = '';
+          }, 2000);
+        }, 4000);
+        
+        setIsProcessingHighlight(false);
+        return true;
       }
+      
+      return false;
     };
-  }, [navigate, refreshTrigger]); // Added refreshTrigger dependency
-
-  // Also check URL for highlight parameters
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const highlightId = params.get('highlight');
     
-    if (highlightId && !hasCheckedHighlightRef.current) {
-      console.log("🔗 [Feed] Found highlight ID in URL:", highlightId);
-      
-      // Store in localStorage
-      const highlightData = {
-        postId: highlightId,
-        timestamp: Date.now(),
-        from: 'url'
-      };
-      localStorage.setItem('searchHighlightedPost', JSON.stringify(highlightData));
-      
-      // Trigger processing
-      hasCheckedHighlightRef.current = false;
-      setIsProcessingHighlight(false);
-      fetchPosts();
+    // Try immediately
+    if (!tryScrollAndHighlight()) {
+      // If not found, try again with increasing delays
+      const retryInterval = setInterval(() => {
+        if (tryScrollAndHighlight() || attempts >= maxAttempts) {
+          clearInterval(retryInterval);
+          if (attempts >= maxAttempts) {
+            console.log("❌ [Feed] Element not found after", maxAttempts, "attempts");
+            setIsProcessingHighlight(false);
+          }
+        }
+      }, 200);
     }
-  }, [location]);
+  }, [setIsProcessingHighlight]);
 
   // Fetch posts with highlighted post handling
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch('http://localhost:5000/api/posts', {
@@ -326,75 +335,86 @@ function Feed() {
       console.error('Error fetching posts:', error);
       setIsProcessingHighlight(false);
     }
-  };
+  }, [navigate, isProcessingHighlight, scrollAndHighlightPost, setError, setIsProcessingHighlight, setPosts, setHighlightedPostId, setSearchPostData]);
 
-  // Combined scroll and highlight function
-  const scrollAndHighlightPost = (postId) => {
-    if (!postId) {
-      console.log("⏭️ [Feed] No post ID to scroll to");
-      setIsProcessingHighlight(false);
+  // Main initialization effect - runs on mount AND when refreshTrigger changes
+  useEffect(() => {
+    console.log("🔍 [Feed] Component mounted or refreshTrigger changed", { refreshTrigger });
+    
+    const userData = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    
+    if (!userData || !token) {
+      navigate("/");
       return;
     }
+
+    const userObj = JSON.parse(userData);
+    setUser(userObj);
     
-    console.log("🎯 [Feed] Attempting to scroll and highlight post:", postId);
+    // Reset the check flag
+    hasCheckedHighlightRef.current = false;
+    setIsProcessingHighlight(false);
     
-    const elementId = `post-${postId}`;
-    
-    // Try multiple times with increasing delays
-    let attempts = 0;
-    const maxAttempts = 5;
-    
-    const tryScrollAndHighlight = () => {
-      attempts++;
-      const element = document.getElementById(elementId);
-      console.log(`🔍 [Feed] Attempt ${attempts}: Element found?`, !!element);
-      
-      if (element) {
-        console.log("✅ [Feed] Found element! Scrolling and highlighting...");
-        
-        // Add highlight styles
-        element.style.border = '3px solid #007bff';
-        element.style.backgroundColor = '#f0f8ff';
-        element.style.boxShadow = '0 0 20px rgba(0, 123, 255, 0.3)';
-        element.style.transition = 'all 0.3s ease';
-        
-        // Scroll to element
-        element.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'center'
+    // Fetch posts
+    fetchPosts();
+
+    // --- SOCKET/NOTIFICATION LOGIC ---
+    const socket = getSocket();
+    if (socket) {
+      socket.on("new_notification", (payload) => {
+        setNotifCount(c => c + 1);
+        setToastData({
+          userName: payload.userName || "New Activity",
+          message: payload.message || "You have a new notification.",
+          userImage: payload.userImage,
+          timeAgo: "just now"
         });
-        
-        // Remove highlight after 4 seconds
-        setTimeout(() => {
-          element.style.boxShadow = '0 0 10px rgba(0, 123, 255, 0.1)';
-          setTimeout(() => {
-            element.style.border = '';
-            element.style.backgroundColor = '';
-            element.style.boxShadow = '';
-          }, 2000);
-        }, 4000);
-        
-        setIsProcessingHighlight(false);
-        return true;
-      }
-      
-      return false;
-    };
-    
-    // Try immediately
-    if (!tryScrollAndHighlight()) {
-      // If not found, try again with increasing delays
-      const retryInterval = setInterval(() => {
-        if (tryScrollAndHighlight() || attempts >= maxAttempts) {
-          clearInterval(retryInterval);
-          if (attempts >= maxAttempts) {
-            console.log("❌ [Feed] Element not found after", maxAttempts, "attempts");
-            setIsProcessingHighlight(false);
-          }
+      });
+
+      const fetchInitialCount = async () => {
+        try {
+          const response = await fetch("http://localhost:5000/api/notifications/unread/count", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await response.json();
+          setNotifCount(data.count || 0);
+        } catch (error) {
+          console.error("Failed to fetch initial notification count:", error);
         }
-      }, 200);
+      };
+      fetchInitialCount();
     }
-  };
+
+    return () => {
+      if (socket) {
+        socket.off("new_notification");
+      }
+    };
+  }, [navigate, refreshTrigger, fetchPosts]);
+
+  // Also check URL for highlight parameters
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const highlightId = params.get('highlight');
+    
+    if (highlightId && !hasCheckedHighlightRef.current) {
+      console.log("🔗 [Feed] Found highlight ID in URL:", highlightId);
+      
+      // Store in localStorage
+      const highlightData = {
+        postId: highlightId,
+        timestamp: Date.now(),
+        from: 'url'
+      };
+      localStorage.setItem('searchHighlightedPost', JSON.stringify(highlightData));
+      
+      // Trigger processing
+      hasCheckedHighlightRef.current = false;
+      setIsProcessingHighlight(false);
+      fetchPosts();
+    }
+  }, [location, fetchPosts]);
 
   // Add a useEffect to handle scroll when posts are set
   useEffect(() => {
@@ -412,7 +432,7 @@ function Feed() {
         }, 150);
       }
     }
-  }, [posts, highlightedPostId, isProcessingHighlight]);
+  }, [posts, highlightedPostId, isProcessingHighlight, scrollAndHighlightPost]);
 
   // ==================== MEDIA UPLOAD FUNCTIONS ====================
 
@@ -459,13 +479,120 @@ function Feed() {
     setShowMediaUploader(!showMediaUploader);
   };
 
+  // ==================== EVENT AND POLL FUNCTIONS ====================
+
+  // Handle event input changes
+  const handleEventChange = (field, value) => {
+    setEventData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Handle poll input changes
+  const handlePollChange = (field, value) => {
+    setPollData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Handle poll option changes
+  const handlePollOptionChange = (index, value) => {
+    const newOptions = [...pollData.options];
+    newOptions[index] = value;
+    setPollData(prev => ({
+      ...prev,
+      options: newOptions
+    }));
+  };
+
+  // Add new poll option
+  const addPollOption = () => {
+    if (pollData.options.length < 6) {
+      setPollData(prev => ({
+        ...prev,
+        options: [...prev.options, '']
+      }));
+    }
+  };
+
+  // Remove poll option
+  const removePollOption = (index) => {
+    if (pollData.options.length > 2) {
+      const newOptions = pollData.options.filter((_, i) => i !== index);
+      setPollData(prev => ({
+        ...prev,
+        options: newOptions
+      }));
+    }
+  };
+
   // ==================== POST CREATION ====================
 
-  // Handle post creation with media
+  // Handle post creation with media - FIXED VERSION
   const handleCreatePost = async () => {
-    if (!newPost.trim() && selectedFiles.length === 0) {
-      setError('Post content or media is required');
+    console.log("🚀 [Feed] Post button clicked!");
+    console.log("📝 Post content:", newPost);
+    console.log("📋 Post type:", postType);
+    console.log("📁 Selected files:", selectedFiles.length);
+    console.log("👤 User:", user?.name);
+    
+    // Prepare post data
+    let postData = { content: newPost.trim() };
+    
+    // Validate based on post type
+    if (postType === 'event') {
+      // Validate event data
+      if (!eventData.title || !eventData.date || !eventData.time || !eventData.location) {
+        setError('Please fill all required event fields');
+        return;
+      }
+      
+      postData = {
+        ...postData,
+        type: 'event',
+        event: {
+          ...eventData,
+          dateTime: new Date(`${eventData.date}T${eventData.time}`).toISOString(),
+          attendees: [],
+          rsvpCount: 0
+        }
+      };
+    } else if (postType === 'poll') {
+      // Validate poll data
+      const validOptions = pollData.options.filter(opt => opt && opt.trim());
+      if (!pollData.question || validOptions.length < 2) {
+        setError('Poll must have a question and at least 2 options');
+        return;
+      }
+      
+      postData = {
+        ...postData,
+        type: 'poll',
+        poll: {
+          question: pollData.question,
+          options: validOptions, // Send just the string options
+        }
+      };
+    }
+
+    // Validate content for text posts only
+    if (postType === 'text' && !postData.content.trim() && selectedFiles.length === 0) {
+      setError('Post content or media is required for text posts');
       return;
+    }
+
+    // For event posts, content can be empty
+    if (postType === 'event' && !postData.content.trim() && selectedFiles.length === 0) {
+      // Allow empty content for events if no media
+      postData.content = `Event: ${eventData.title}`;
+    }
+
+    // For poll posts, content can be empty
+    if (postType === 'poll' && !postData.content.trim() && selectedFiles.length === 0) {
+      // Allow empty content for polls if no media
+      postData.content = `Poll: ${pollData.question}`;
     }
 
     setLoading(true);
@@ -474,56 +601,71 @@ function Feed() {
 
     try {
       const token = localStorage.getItem('token');
+      console.log("🔑 Token exists:", !!token);
+      console.log("📦 Post data to send:", JSON.stringify(postData, null, 2));
+      
+      let response;
+      let result;
       
       if (selectedFiles.length > 0) {
-        // Create FormData for media upload
+        console.log("📤 Uploading post with media...");
+        
         const formData = new FormData();
-        formData.append('content', newPost.trim());
+        formData.append('content', postData.content);
+        formData.append('type', postType);
+        
+        if (postType === 'event') {
+          formData.append('event', JSON.stringify(postData.event));
+        } else if (postType === 'poll') {
+          formData.append('poll', JSON.stringify(postData.poll));
+        }
         
         // Append all selected files
-        selectedFiles.forEach((file, index) => {
+        selectedFiles.forEach((file) => {
           formData.append('media', file);
         });
 
-        const response = await fetch('http://localhost:5000/api/posts/upload', {
+        console.log("📦 FormData created, sending to server...");
+        
+        response = await fetch('http://localhost:5000/api/posts/upload', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`
-            // Don't set Content-Type for FormData
           },
           body: formData
         });
 
-        const data = await response.json();
-        
-        if (response.ok) {
-          handlePostSuccess(data);
-        } else {
-          setError(data.message || 'Failed to create post with media');
-        }
+        result = await response.json();
+        console.log("📡 Media upload response:", result);
       } else {
-        // Text-only post
-        const response = await fetch('http://localhost:5000/api/posts', {
+        // Text/Event/Poll post without media
+        console.log("📝 Creating post without media...");
+        console.log("📦 Post data:", JSON.stringify(postData, null, 2));
+        
+        response = await fetch('http://localhost:5000/api/posts', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({
-            content: newPost.trim()
-          })
+          body: JSON.stringify(postData)
         });
 
-        const data = await response.json();
-        
-        if (response.ok) {
-          handlePostSuccess(data);
-        } else {
-          setError(data.message || 'Failed to create post');
-        }
+        result = await response.json();
+        console.log("📡 Post response:", result);
+      }
+
+      console.log("✅ Response status:", response.status);
+      console.log("✅ Response data:", result);
+      
+      if (response.ok) {
+        handlePostSuccess(result);
+      } else {
+        console.error("❌ Post creation failed:", result);
+        setError(result.message || 'Failed to create post. Please try again.');
       }
     } catch (error) {
-      console.error('Create post error:', error);
+      console.error('❌ Create post error:', error);
       setError('Network error: ' + error.message);
     } finally {
       setLoading(false);
@@ -539,9 +681,111 @@ function Feed() {
     setMediaPreviews([]);
     setShowMediaUploader(false);
     
-    setSuccess('Post created successfully!');
-    setPosts(prevPosts => [data.post || data, ...prevPosts]);
+    // Clear event and poll forms
+    if (postType === 'event') {
+      setEventData({
+        title: '',
+        description: '',
+        date: '',
+        time: '',
+        location: '',
+        maxAttendees: ''
+      });
+    } else if (postType === 'poll') {
+      setPollData({
+        question: '',
+        options: ['', '']
+      });
+    }
+    
+    // Reset to text post type
+    setPostType('text');
+    
+    // Add new post to feed
+    const newPostData = data.post || data;
+    console.log("🎉 New post data to add:", newPostData);
+    
+    setPosts(prevPosts => [newPostData, ...prevPosts]);
+    setSuccess('✅ Post created successfully!');
     setTimeout(() => setSuccess(""), 3000);
+    
+    console.log("🔄 Posts updated, new post count:", posts.length + 1);
+  };
+
+  // ==================== POST INTERACTIONS ====================
+
+  // Handle event RSVP
+  const handleEventRSVP = async (postId, status) => {
+    if (!user) return;
+
+    setRsvpLoading(prev => ({ ...prev, [postId]: true }));
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/rsvp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === postId ? data.post : post
+          )
+        );
+        setSuccess(`RSVP ${status} successful!`);
+        setTimeout(() => setSuccess(""), 2000);
+      } else {
+        setError(data.message || 'Failed to RSVP');
+      }
+    } catch (error) {
+      setError('Network error: Unable to RSVP');
+    } finally {
+      setRsvpLoading(prev => ({ ...prev, [postId]: false }));
+    }
+  };
+
+  // Handle poll voting
+  const handlePollVote = async (postId, optionIndex) => {
+    if (!user) return;
+
+    setVoteLoading(prev => ({ ...prev, [postId]: true }));
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/vote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ optionIndex })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === postId ? data.post : post
+          )
+        );
+        setSuccess('Vote submitted!');
+        setTimeout(() => setSuccess(""), 2000);
+      } else {
+        setError(data.message || 'Failed to vote');
+      }
+    } catch (error) {
+      setError('Network error: Unable to vote');
+    } finally {
+      setVoteLoading(prev => ({ ...prev, [postId]: false }));
+    }
   };
 
   const handleLike = async (postId) => {
@@ -610,6 +854,35 @@ function Feed() {
     }
   };
 
+  // ==================== POST DELETE FUNCTION ====================
+
+  const handleDeletePost = async (postId) => {
+    if (!window.confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        setPosts(prevPosts => prevPosts.filter(post => post._id !== postId));
+        setSuccess('Post deleted successfully!');
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        const data = await response.json();
+        setError(data.message || 'Failed to delete post');
+      }
+    } catch (error) {
+      setError('Network error: Unable to delete post');
+    }
+  };
+
   // Report post function
   const handleReportPost = async (postId) => {
     const reason = prompt("Please provide reason for reporting this post (harassment, spam, inappropriate content, etc.):");
@@ -650,6 +923,19 @@ function Feed() {
 
   const isPostLiked = (post) => {
     return post.likes?.includes(user?.id);
+  };
+
+  // Check if user has RSVPed to an event
+  const getUserRSVPStatus = (post) => {
+    if (!post.event?.attendees || !user) return null;
+    const userRSVP = post.event.attendees.find(a => a.userId === user.id);
+    return userRSVP ? userRSVP.status : null;
+  };
+
+  // Check if user has voted in a poll
+  const getUserVoteStatus = (post) => {
+    if (!post.poll?.voters || !user) return null;
+    return post.poll.voters.find(v => v.userId === user.id);
   };
 
   const getUserAvatar = (userData) => {
@@ -712,37 +998,165 @@ function Feed() {
     setRefreshTrigger(prev => prev + 1);
   };
 
-  // Render media grid with LinkedIn-style video player
-const renderMediaGrid = (media) => {
-  if (!media || media.length === 0) return null;
-  
-  const count = media.length;
-  
-  return (
-    <div className={`post-media-grid count-${count}`}>
-      {media.map((mediaItem, index) => (
-        <div key={index} className={`media-item ${count === 1 ? 'single' : 'multiple'}`}>
-          {mediaItem.type === 'image' ? (
-            <img 
-              src={mediaItem.url} 
-              alt={`Post media ${index + 1}`}
-              className="post-media"
-              loading="lazy"
-            />
-          ) : (
-            <div className="video-container-linkedin">
-              <VideoPlayer 
-                src={mediaItem.url}
-                format={mediaItem.format}
-                type={mediaItem.type}
-              />
+  // ==================== RENDER FUNCTIONS ====================
+
+  // Render event card
+  const renderEventCard = (event) => {
+    if (!event) return null;
+    
+    const eventDate = new Date(event.dateTime);
+    const now = new Date();
+    const isPastEvent = eventDate < now;
+    
+    return (
+      <div className="event-card">
+        <div className="event-header">
+          <div className="event-title">{event.title}</div>
+          <div className="event-date-badge">
+            {eventDate.toLocaleDateString('en-US', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric' 
+            })}
+          </div>
+        </div>
+        
+        {event.description && (
+          <p className="event-description">{event.description}</p>
+        )}
+        
+        <div className="event-details">
+          <div className="event-detail">
+            <span className="event-icon">🕒</span>
+            <span>{eventDate.toLocaleTimeString('en-US', { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            })}</span>
+          </div>
+          
+          <div className="event-detail">
+            <span className="event-icon">📍</span>
+            <span>{event.location}</span>
+          </div>
+          
+          {event.maxAttendees && (
+            <div className="event-detail">
+              <span className="event-icon">👥</span>
+              <span>Max: {event.maxAttendees}</span>
             </div>
           )}
         </div>
-      ))}
-    </div>
-  );
-};
+        
+        <div className="event-stats">
+          <div className="going-count">
+            <span className="going-badge">{event.rsvpCount || 0} going</span>
+            {event.maxAttendees && (
+              <span className="capacity">
+                ({event.attendees?.length || 0}/{event.maxAttendees})
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render poll card
+  const renderPollCard = (poll, postId) => {
+    if (!poll) return null;
+    
+    const userVote = getUserVoteStatus({ poll });
+    const totalVotes = poll.totalVotes || 0;
+    
+    return (
+      <div className="poll-card">
+        <div className="poll-header">
+          <div className="poll-title">{poll.question}</div>
+          <div className="poll-stats">
+            <span className="vote-count">{totalVotes} votes</span>
+          </div>
+        </div>
+        
+        <div className="poll-options-list">
+          {poll.options.map((option, index) => {
+            const percentage = totalVotes > 0 ? Math.round((option.votes / totalVotes) * 100) : 0;
+            const isUserVote = userVote?.optionIndex === index;
+            
+            return (
+              <div 
+                key={index} 
+                className={`poll-option-item ${isUserVote ? 'selected' : ''}`}
+                onClick={() => !userVote && !voteLoading[postId] && handlePollVote(postId, index)}
+                style={{ cursor: userVote || voteLoading[postId] ? 'default' : 'pointer' }}
+              >
+                <div className="poll-option-radio">
+                  {isUserVote && <div className="selected-dot"></div>}
+                </div>
+                <div className="poll-option-text">{option.text}</div>
+                <div className="poll-option-percentage">{percentage}%</div>
+                
+                {totalVotes > 0 && (
+                  <div 
+                    className="poll-progress-bar"
+                    style={{ width: `${percentage}%` }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        
+        <div className="poll-footer">
+          {userVote ? (
+            <div className="voted-message">
+              ✅ You voted for "{poll.options[userVote.optionIndex]?.text}"
+            </div>
+          ) : (
+            <button 
+              className="vote-btn"
+              onClick={() => {}}
+              disabled={voteLoading[postId]}
+              style={{ opacity: 0.6, cursor: 'default' }}
+            >
+              Click an option to vote
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Render media grid with LinkedIn-style video player
+  const renderMediaGrid = (media) => {
+    if (!media || media.length === 0) return null;
+    
+    const count = media.length;
+    
+    return (
+      <div className={`post-media-grid count-${count}`}>
+        {media.map((mediaItem, index) => (
+          <div key={index} className={`media-item ${count === 1 ? 'single' : 'multiple'}`}>
+            {mediaItem.type === 'image' ? (
+              <img 
+                src={mediaItem.url} 
+                alt={`Post media ${index + 1}`}
+                className="post-media"
+                loading="lazy"
+              />
+            ) : (
+              <div className="video-container-linkedin">
+                <VideoPlayer 
+                  src={mediaItem.url}
+                  format={mediaItem.format}
+                  type={mediaItem.type}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   if (!user) {
     return (
@@ -885,7 +1299,11 @@ const renderMediaGrid = (media) => {
               </div>
               <input 
                 type="text" 
-                placeholder="What's happening on campus? Share updates, events, or thoughts... 🎓" 
+                placeholder={
+                  postType === 'text' ? "What's happening on campus? Share updates, events, or thoughts... 🎓" :
+                  postType === 'event' ? "Describe your event (optional)..." :
+                  "Ask a question for your poll (optional)..."
+                }
                 value={newPost}
                 onChange={(e) => setNewPost(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleCreatePost()}
@@ -894,8 +1312,132 @@ const renderMediaGrid = (media) => {
               />
             </div>
             
-            {/* Media Upload Section */}
-            {showMediaUploader && (
+            {/* Event Creation Form */}
+            {postType === 'event' && (
+              <div className="event-form">
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Event Title *</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g., Sports Day"
+                      value={eventData.title}
+                      onChange={(e) => handleEventChange('title', e.target.value)}
+                      disabled={isUploading}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Location *</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g., Main Ground"
+                      value={eventData.location}
+                      onChange={(e) => handleEventChange('location', e.target.value)}
+                      disabled={isUploading}
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Date *</label>
+                    <input 
+                      type="date" 
+                      value={eventData.date}
+                      onChange={(e) => handleEventChange('date', e.target.value)}
+                      disabled={isUploading}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Time *</label>
+                    <input 
+                      type="time" 
+                      value={eventData.time}
+                      onChange={(e) => handleEventChange('time', e.target.value)}
+                      disabled={isUploading}
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-group">
+                  <label>Description</label>
+                  <textarea 
+                    placeholder="Describe your event..."
+                    value={eventData.description}
+                    onChange={(e) => handleEventChange('description', e.target.value)}
+                    disabled={isUploading}
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Max Attendees (optional)</label>
+                  <input 
+                    type="number" 
+                    placeholder="Leave empty for unlimited"
+                    value={eventData.maxAttendees}
+                    onChange={(e) => handleEventChange('maxAttendees', e.target.value)}
+                    disabled={isUploading}
+                    min="1"
+                  />
+                </div>
+              </div>
+            )}
+            
+            {/* Poll Creation Form */}
+            {postType === 'poll' && (
+              <div className="poll-form">
+                <div className="form-group">
+                  <label>Poll Question *</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g., Which programming language should we learn next?"
+                    value={pollData.question}
+                    onChange={(e) => handlePollChange('question', e.target.value)}
+                    disabled={isUploading}
+                  />
+                </div>
+                
+                <div className="poll-options">
+                  <label>Options (minimum 2) *</label>
+                  {pollData.options.map((option, index) => (
+                    <div key={index} className="poll-option">
+                      <input 
+                        type="text" 
+                        placeholder={`Option ${index + 1}`}
+                        value={option}
+                        onChange={(e) => handlePollOptionChange(index, e.target.value)}
+                        disabled={isUploading}
+                      />
+                      {pollData.options.length > 2 && (
+                        <button 
+                          type="button" 
+                          className="remove-option-btn"
+                          onClick={() => removePollOption(index)}
+                          disabled={isUploading}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  
+                  {pollData.options.length < 6 && (
+                    <button 
+                      type="button" 
+                      className="add-option-btn"
+                      onClick={addPollOption}
+                      disabled={isUploading}
+                    >
+                      + Add Option
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Media Upload Section (only for text posts) */}
+            {postType === 'text' && showMediaUploader && (
               <div className="media-upload-section">
                 <div className="media-preview-container">
                   {mediaPreviews.map((preview, index) => (
@@ -950,28 +1492,97 @@ const renderMediaGrid = (media) => {
             )}
             
             <div className="post-actions">
-              <div className="post-features">
+              <div className="post-features" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                {/* Media upload button (only for text posts) */}
+                {postType === 'text' && (
+                  <button 
+                    className="feature-btn" 
+                    title="Add Photos/Videos"
+                    onClick={toggleMediaUploader}
+                    disabled={isUploading}
+                    style={{ 
+                      backgroundColor: showMediaUploader ? '#f1f5f9' : 'transparent',
+                      color: showMediaUploader ? '#4f46e5' : '#64748b',
+                      border: '1px solid #e2e8f0',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {mediaPreviews.length > 0 ? `🖼️ ${mediaPreviews.length}` : '🖼️ Media'}
+                  </button>
+                )}
+                
+                {/* Event Button */}
                 <button 
                   className="feature-btn" 
-                  title="Add Photos/Videos"
-                  onClick={toggleMediaUploader}
+                  title="Create Event"
+                  onClick={() => setPostType(postType === 'event' ? 'text' : 'event')}
                   disabled={isUploading}
                   style={{ 
-                    backgroundColor: showMediaUploader ? '#f1f5f9' : 'transparent',
-                    color: showMediaUploader ? '#4f46e5' : '#64748b'
+                    backgroundColor: postType === 'event' ? '#f1f5f9' : 'transparent',
+                    color: postType === 'event' ? '#4f46e5' : '#64748b',
+                    border: '1px solid #e2e8f0',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    transition: 'all 0.2s'
                   }}
                 >
-                  {mediaPreviews.length > 0 ? `🖼️ ${mediaPreviews.length}` : '🖼️'}
+                  📅 Event
                 </button>
-                <button className="feature-btn" title="Add Event" disabled={isUploading}>📅</button>
-                <button className="feature-btn" title="Add Poll" disabled={isUploading}>📊</button>
+                
+                {/* Poll Button */}
+                <button 
+                  className="feature-btn" 
+                  title="Create Poll"
+                  onClick={() => setPostType(postType === 'poll' ? 'text' : 'poll')}
+                  disabled={isUploading}
+                  style={{ 
+                    backgroundColor: postType === 'poll' ? '#f1f5f9' : 'transparent',
+                    color: postType === 'poll' ? '#4f46e5' : '#64748b',
+                    border: '1px solid #e2e8f0',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  📊 Poll
+                </button>
+                
+                {/* Hidden file input for media upload */}
+                <input
+                  type="file"
+                  id="media-upload-hidden"
+                  multiple
+                  accept="image/*,video/*"
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                  disabled={isUploading}
+                />
               </div>
+              
               <div className="post-submit-section">
                 <div className="char-count">{newPost.length}/500</div>
                 <button 
                   className="post-submit-btn" 
                   onClick={handleCreatePost}
-                  disabled={(loading || isUploading) || (!newPost.trim() && selectedFiles.length === 0)}
+                  disabled={(loading || isUploading) || 
+                    (postType === 'text' && !newPost.trim() && selectedFiles.length === 0) ||
+                    (postType === 'event' && (!eventData.title || !eventData.date || !eventData.time || !eventData.location)) ||
+                    (postType === 'poll' && (!pollData.question || pollData.options.filter(opt => opt && opt.trim()).length < 2))
+                  }
                 >
                   {loading || isUploading ? (
                     <>
@@ -979,7 +1590,9 @@ const renderMediaGrid = (media) => {
                       {isUploading ? 'Uploading...' : 'Posting...'}
                     </>
                   ) : (
-                    '📝 Post'
+                    postType === 'text' ? (selectedFiles.length > 0 ? `📷 Post (${selectedFiles.length})` : '📝 Post') :
+                    postType === 'event' ? (selectedFiles.length > 0 ? `📅 Create Event (${selectedFiles.length})` : '📅 Create Event') :
+                    '📊 Create Poll'
                   )}
                 </button>
               </div>
@@ -1003,6 +1616,8 @@ const renderMediaGrid = (media) => {
             ) : (
               posts.map(post => {
                 const isHighlighted = post._id === highlightedPostId;
+                const isOwner = user && post.user?.id === user.id;
+                const userRSVPStatus = getUserRSVPStatus(post);
                 
                 return (
                   <div 
@@ -1069,11 +1684,29 @@ const renderMediaGrid = (media) => {
                           </div>
                         </div>
                       </div>
-                      <button className="post-options-btn" title="More options">⋯</button>
+                      <div className="post-actions-right">
+                        {/* Delete Button (only for owner or admin) */}
+                        {(isOwner || user?.role === 'admin') && (
+                          <button 
+                            className="delete-post-btn"
+                            onClick={() => handleDeletePost(post._id)}
+                            title="Delete Post"
+                          >
+                            🗑️
+                          </button>
+                        )}
+                        <button className="post-options-btn" title="More options">⋯</button>
+                      </div>
                     </div>
 
                     <div className="post-content">
                       <p>{post.content}</p>
+                      
+                      {/* Display Event */}
+                      {post.type === 'event' && post.event && renderEventCard(post.event)}
+                      
+                      {/* Display Poll */}
+                      {post.type === 'poll' && post.poll && renderPollCard(post.poll, post._id)}
                       
                       {/* Display Media */}
                       {post.media && post.media.length > 0 && renderMediaGrid(post.media)}
@@ -1086,6 +1719,34 @@ const renderMediaGrid = (media) => {
                       )}
                     </div>
 
+                    {/* Event RSVP Buttons */}
+                    {post.type === 'event' && post.event && (
+                      <div className="event-actions">
+                        {userRSVPStatus === 'going' ? (
+                          <div className="rsvp-status">
+                            ✅ You're going to this event
+                          </div>
+                        ) : (
+                          <>
+                            <button 
+                              className="event-btn rsvp-btn"
+                              onClick={() => handleEventRSVP(post._id, 'going')}
+                              disabled={rsvpLoading[post._id]}
+                            >
+                              {rsvpLoading[post._id] ? '...' : '✅ Going'}
+                            </button>
+                            <button 
+                              className="event-btn maybe-btn"
+                              onClick={() => handleEventRSVP(post._id, 'maybe')}
+                              disabled={rsvpLoading[post._id]}
+                            >
+                              {rsvpLoading[post._id] ? '...' : '🤔 Maybe'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     <div className="post-stats">
                       <span className="stat-item">
                         👍 {post.likes?.length || 0}
@@ -1093,6 +1754,16 @@ const renderMediaGrid = (media) => {
                       <span className="stat-item">
                         💬 {post.comments?.length || 0}
                       </span>
+                      {post.type === 'event' && post.event && (
+                        <span className="stat-item">
+                          👥 {post.event.rsvpCount || 0}
+                        </span>
+                      )}
+                      {post.type === 'poll' && post.poll && (
+                        <span className="stat-item">
+                          📊 {post.poll.totalVotes || 0}
+                        </span>
+                      )}
                       {post.media && post.media.length > 0 && (
                         <span className="stat-item">
                           📷 {post.media.length}
@@ -1219,7 +1890,7 @@ const renderMediaGrid = (media) => {
             <div className="stats">
               <div className="stat">
                 <strong>{posts.length}</strong>
-                <span>Posts Today</span>
+                <span>Total Posts</span>
               </div>
               <div className="stat">
                 <strong>{new Set(posts.map(p => p.user?.id)).size}</strong>
@@ -1235,6 +1906,57 @@ const renderMediaGrid = (media) => {
               </div>
             </div>
           </div>
+
+          {/* Upcoming Events Sidebar */}
+          {posts.filter(post => post.type === 'event' && post.event).length > 0 && (
+            <div className="sidebar-card">
+              <h3>📅 Upcoming Events</h3>
+              <div className="upcoming-events">
+                {posts
+                  .filter(post => post.type === 'event' && post.event)
+                  .slice(0, 3)
+                  .map(post => {
+                    const eventDate = new Date(post.event.dateTime);
+                    return (
+                      <div key={post._id} className="upcoming-event">
+                        <div className="event-sidebar-header">
+                          <div className="event-sidebar-title">{post.event.title}</div>
+                          <div className="event-sidebar-date">
+                            {eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </div>
+                        </div>
+                        <div className="event-sidebar-time">
+                          {eventDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    );
+                  })
+                }
+              </div>
+            </div>
+          )}
+
+          {/* Active Polls Sidebar */}
+          {posts.filter(post => post.type === 'poll' && post.poll).length > 0 && (
+            <div className="sidebar-card">
+              <h3>📊 Active Polls</h3>
+              <div className="active-polls">
+                {posts
+                  .filter(post => post.type === 'poll' && post.poll)
+                  .slice(0, 3)
+                  .map(post => (
+                    <div key={post._id} className="active-poll">
+                      <div className="poll-sidebar-title">{post.poll.question}</div>
+                      <div className="poll-sidebar-stats">
+                        <span>{post.poll.totalVotes || 0} votes</span>
+                        <span>{post.poll.options.length} options</span>
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          )}
         </div>
       </div>
       
