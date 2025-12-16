@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+// Import search component and styles
+import ExploreSearch from "../components/ExploreSearch";
+import "../styles/ExploreSearch.css";
 
 function Network() {
   const [users, setUsers] = useState([]);
@@ -64,11 +67,11 @@ function Network() {
         <img 
           src={user.profilePhoto} 
           alt={user.name}
-          style={{ width: "40px", height: "40px", borderRadius: "50%", objectFit: "cover" }}
+          className="user-avatar-img"
         />
       );
     }
-    return <span style={{ fontSize: "20px" }}>👤</span>;
+    return <span className="avatar-initial">{user?.name?.charAt(0).toUpperCase() || "U"}</span>;
   };
 
   // Fetch all network data
@@ -229,133 +232,51 @@ function Network() {
     }
   };
 
+  // Handler for user selected from search
+  const handleUserSelectFromSearch = (selectedUser) => {
+    if (selectedUser && selectedUser._id) {
+      navigate(`/profile/${selectedUser._id}`); 
+    }
+  };
+
   if (loading && !user) {
     return <div style={{ padding: "20px" }}>Loading...</div>;
   }
 
   return (
-    <div>
-      {/* Header */}
-      <header className="feed-header" style={{
-        background: "white",
-        borderBottom: "1px solid #e0e0e0",
-        padding: "15px 20px",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        position: "sticky",
-        top: 0,
-        zIndex: 1000
-      }}>
-        <div className="header-left" style={{ display: "flex", alignItems: "center", gap: "30px" }}>
-          <div className="logo" style={{ 
-            fontSize: "24px", 
-            fontWeight: "bold", 
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent"
-          }}>💼 CampusConnect</div>
-          <div className="nav-items" style={{ display: "flex", gap: "10px" }}>
-            <button 
-              className="nav-btn" 
-              onClick={() => navigate("/feed")}
-              style={{
-                background: "none",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "500"
-              }}
-            >🏠 Feed</button>
-            <button 
-              className="nav-btn" 
-              onClick={() => navigate("/profile")}
-              style={{
-                background: "none",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "500"
-              }}
-            >👤 Profile</button>
-            <button 
-              className="nav-btn active" 
-              style={{
-                background: "#667eea",
-                color: "white",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "600"
-              }}
-            >👥 Network</button>
-            
-            <button 
-              className="nav-btn" 
-              style={{
-                background: "none",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "500"
-              }}
-            >🔍 Explore</button>
-            
-            {/* Notification button */}
+    <div className="feed-container">
+      {/* Updated Header matching Feed.jsx */}
+      <header className="feed-header">
+        <div className="header-left">
+          <div className="logo" onClick={() => navigate("/feed")}>💼 CampusConnect</div>
+          
+          {/* SEARCH BAR - Added like Feed.jsx */}
+          <div className="feed-search-wrapper">
+            <ExploreSearch onUserSelect={handleUserSelectFromSearch} />
+          </div>
+
+          <div className="nav-items">
+            <button className="nav-btn" onClick={() => navigate("/feed")}>🏠 Feed</button>
+            <button className="nav-btn" onClick={() => navigate("/profile")}>👤 Profile</button>
+            <button className="nav-btn active">👥 Network</button>
+            <button className="nav-btn" onClick={() => navigate("/Explore")}>🔥 Explore</button>
             <button 
               className={`nav-btn notification-bell-btn ${showNotifications ? 'active-bell' : ''}`}
               onClick={handleClickNotification}
               title="Notifications"
-              style={{
-                background: "none",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "500",
-                position: "relative"
-              }}
             >
               🔔 Notifications
-              {notifCount > 0 && (
-                <span className="notif-badge" style={{
-                  position: "absolute",
-                  top: "-5px",
-                  right: "5px",
-                  background: "#ff4757",
-                  color: "white",
-                  borderRadius: "50%",
-                  width: "20px",
-                  height: "20px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "12px",
-                  fontWeight: "bold"
-                }}>{notifCount}</span>
-              )}
+              {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
             </button>
           </div>
         </div>
-        <div className="header-right" style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-          <div className="user-info" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span className="user-name" style={{ fontSize: "14px", fontWeight: "500" }}>
-              Welcome, {user?.name || "User"}
-            </span>
+        <div className="header-right">
+          <div className="user-info">
+            <span className="user-name">Welcome, {user?.name || "User"}</span>
             <div 
               className="user-avatar" 
               title="View Profile"
               onClick={() => navigate("/profile")}
-              style={{ cursor: "pointer" }}
             >
               {getUserAvatar(user)}
             </div>
@@ -388,20 +309,7 @@ function Network() {
             </button>
           )}
           
-          <button 
-            className="logout-btn" 
-            onClick={handleLogout}
-            style={{
-              background: "#ff6b6b",
-              color: "white",
-              border: "none",
-              padding: "8px 16px",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: "500"
-            }}
-          >🚪 Logout</button>
+          <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
         </div>
       </header>
 

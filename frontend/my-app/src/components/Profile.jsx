@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/Profile.css";
+import ExploreSearch from "../components/ExploreSearch";
+import "../styles/ExploreSearch.css";
 
 function Profile() {
   const navigate = useNavigate();
@@ -11,6 +13,7 @@ function Profile() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [notifCount, setNotifCount] = useState(0);
   const fileInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
@@ -61,7 +64,36 @@ function Profile() {
     if (userObj.profilePhoto) {
       setPhotoPreview(userObj.profilePhoto);
     }
+
+    // Fetch notification count
+    fetchNotificationCount();
   }, [navigate]);
+
+  // Fetch notification count
+  const fetchNotificationCount = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch("http://localhost:5000/api/notifications/unread/count", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await response.json();
+      setNotifCount(data.count || 0);
+    } catch (error) {
+      console.error("Failed to fetch notification count:", error);
+    }
+  };
+
+  // Handler for user selected from search
+  const handleUserSelectFromSearch = (selectedUser) => {
+    if (selectedUser && selectedUser._id) {
+      navigate(`/profile/${selectedUser._id}`); 
+    }
+  };
+
+  // Handle notification click
+  const handleClickNotification = () => {
+    navigate("/notifications");
+  };
 
   const handlePhotoUpload = (event) => {
     const file = event.target.files[0];
@@ -232,38 +264,121 @@ function Profile() {
         />
       );
     }
-    return userData?.name?.charAt(0).toUpperCase() || "U";
+    return <span className="avatar-initial">{userData?.name?.charAt(0).toUpperCase() || "U"}</span>;
   };
 
   if (!user) {
     return (
-      <div className="loading-container">
-        <div className="loading-spinner">Loading...</div>
+      <div className="feed-container">
+        {/* Header matching Feed.jsx */}
+        <header className="feed-header">
+          <div className="header-left">
+            <div className="logo" onClick={() => navigate("/feed")}>💼 CampusConnect</div>
+            
+            {/* SEARCH BAR */}
+            <div className="feed-search-wrapper">
+              <ExploreSearch onUserSelect={handleUserSelectFromSearch} />
+            </div>
+
+            <div className="nav-items">
+              <button className="nav-btn" onClick={() => navigate("/feed")}>🏠 Feed</button>
+              <button className="nav-btn active">👤 Profile</button>
+              <button className="nav-btn" onClick={() => navigate("/network")}>👥 Network</button>
+              <button className="nav-btn" onClick={() => navigate("/Explore")}>🔥 Explore</button>
+              
+              <button 
+                className={`nav-btn notification-bell-btn`}
+                onClick={handleClickNotification}
+                title="Notifications"
+              >
+                🔔 Notifications
+                {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
+              </button>
+            </div>
+          </div>
+          <div className="header-right">
+            <div className="user-info">
+              <span className="user-name">Welcome, {user?.name || "User"}</span>
+              <div 
+                className="user-avatar" 
+                title="View Profile"
+                onClick={() => navigate("/profile")}
+              >
+                {getUserAvatar(user)}
+              </div>
+            </div>
+            
+            {/* Admin button - Only show if user is admin */}
+            {user?.role === 'admin' && (
+              <button 
+                className="admin-btn"
+                onClick={() => navigate("/admin")}
+              >
+                👑 Admin
+              </button>
+            )}
+            
+            <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
+          </div>
+        </header>
+        
+        <div className="loading-container">
+          <div className="loading-spinner">Loading...</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="profile-container">
-      {/* Header */}
-      <header className="profile-header">
+    <div className="feed-container">
+      {/* Header matching Feed.jsx */}
+      <header className="feed-header">
         <div className="header-left">
-          <div className="logo">💼 CampusConnect</div>
+          <div className="logo" onClick={() => navigate("/feed")}>💼 CampusConnect</div>
+          
+          {/* SEARCH BAR */}
+          <div className="feed-search-wrapper">
+            <ExploreSearch onUserSelect={handleUserSelectFromSearch} />
+          </div>
+
           <div className="nav-items">
             <button className="nav-btn" onClick={() => navigate("/feed")}>🏠 Feed</button>
             <button className="nav-btn active">👤 Profile</button>
-            <button className="nav-btn">👥 Network</button>
-            <button className="nav-btn">🔍 Explore</button>
-            <button className="nav-btn">🔔Notifications</button>
+            <button className="nav-btn" onClick={() => navigate("/network")}>👥 Network</button>
+            <button className="nav-btn" onClick={() => navigate("/Explore")}>🔥 Explore</button>
+            
+            <button 
+              className={`nav-btn notification-bell-btn`}
+              onClick={handleClickNotification}
+              title="Notifications"
+            >
+              🔔 Notifications
+              {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
+            </button>
           </div>
         </div>
         <div className="header-right">
-          <div className="user-info" onClick={() => navigate("/feed")}>
-            <span className="user-name">Welcome, {user.name}</span>
-            <div className="user-avatar" title={user.name}>
+          <div className="user-info">
+            <span className="user-name">Welcome, {user?.name || "User"}</span>
+            <div 
+              className="user-avatar" 
+              title="View Profile"
+              onClick={() => navigate("/profile")}
+            >
               {getUserAvatar(user)}
             </div>
           </div>
+          
+          {/* Admin button - Only show if user is admin */}
+          {user?.role === 'admin' && (
+            <button 
+              className="admin-btn"
+              onClick={() => navigate("/admin")}
+            >
+              👑 Admin
+            </button>
+          )}
+          
           <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
         </div>
       </header>
