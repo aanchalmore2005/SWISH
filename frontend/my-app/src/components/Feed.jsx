@@ -1,17 +1,165 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { LinkedInVideoPlayer } from "../components/MediaUploader";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../styles/Feed.css";
-// Import her notification components
 import { getSocket } from "../components/NotificationBell";
 import Toast from "../components/Toast";
 import "../styles/Notifications.css";
-
-/* --------------------
-   ADDED: Search imports
-   -------------------- */
 import ExploreSearch from "../components/ExploreSearch";
 import "../styles/ExploreSearch.css";
+
+
+// ==================== SOCIAL SHARE COMPONENT ====================
+import {
+  FacebookShareButton,
+  TwitterShareButton,
+  LinkedinShareButton,
+  WhatsappShareButton,
+  TelegramShareButton,
+  EmailShareButton,
+  FacebookIcon,
+  TwitterIcon,
+  LinkedinIcon,
+  WhatsappIcon,
+  TelegramIcon,
+  EmailIcon,
+  RedditShareButton,
+  RedditIcon,
+  PinterestShareButton,
+  PinterestIcon,
+} from "react-share";
+import { IoLogoInstagram } from "react-icons/io5";
+
+const SocialSharePopup = ({ post, onClose }) => {
+  const [copied, setCopied] = useState(false);
+  const shareUrl = `${window.location.origin}/post/${post._id}`;
+  const shareTitle = `${post.user?.name || "User"}: ${post.content?.substring(0, 100)}${post.content?.length > 100 ? "..." : ""}`;
+  
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(shareUrl)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(err => console.error('Failed to copy:', err));
+  };
+
+  // Instagram doesn't have a direct share URL for web, so we create a custom handler
+  const handleInstagramShare = () => {
+    // Instagram doesn't support direct sharing from web
+    // We'll copy the link and open Instagram
+    navigator.clipboard.writeText(shareUrl)
+      .then(() => {
+        setCopied(true);
+        // Option 1: Open Instagram in new tab (user can paste the link manually)
+        window.open('https://www.instagram.com/', '_blank');
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(err => console.error('Failed to copy:', err));
+  };
+
+  const shareButtons = [
+    {
+      platform: 'Facebook',
+      button: FacebookShareButton,
+      icon: FacebookIcon,
+      props: { url: shareUrl, quote: shareTitle, hashtag: "#CampusConnect" }
+    },
+    {
+      platform: 'Twitter',
+      button: TwitterShareButton,
+      icon: TwitterIcon,
+      props: { url: shareUrl, title: shareTitle, hashtags: ["CampusConnect", "CampusLife"] }
+    },
+    {
+      platform: 'LinkedIn',
+      button: LinkedinShareButton,
+      icon: LinkedinIcon,
+      props: { url: shareUrl, title: shareTitle, summary: post.content?.substring(0, 200) }
+    },
+    {
+      platform: 'WhatsApp',
+      button: WhatsappShareButton,
+      icon: WhatsappIcon,
+      props: { url: shareUrl, title: shareTitle, separator: " | " }
+    },
+    {
+      platform: 'Telegram',
+      button: TelegramShareButton,
+      icon: TelegramIcon,
+      props: { url: shareUrl, title: shareTitle }
+    },
+    {
+      platform: 'Email',
+      button: EmailShareButton,
+      icon: EmailIcon,
+      props: { url: shareUrl, subject: `Check out this post from ${post.user?.name || "CampusConnect"}`, body: `${shareTitle}\n\n${shareUrl}` }
+    },
+    {
+      platform: 'Reddit',
+      button: RedditShareButton,
+      icon: RedditIcon,
+      props: { url: shareUrl, title: shareTitle }
+    },
+    {
+      platform: 'Instagram',
+      button: 'custom', // Custom handler for Instagram
+      icon: IoLogoInstagram,
+      handler: handleInstagramShare
+    }
+  ];
+
+  return (
+    <div className="share-popup-overlay" onClick={onClose}>
+      <div className="share-popup" onClick={(e) => e.stopPropagation()}>
+        <div className="share-popup-header">
+          <h3>Share this post</h3>
+          <button className="close-share-btn" onClick={onClose}>×</button>
+        </div>
+        
+        <div className="share-platforms">
+          {shareButtons.map(({ platform, button: ShareButton, icon: Icon, props, handler }) => (
+            <div key={platform} className="share-platform-item">
+              {platform === 'Instagram' ? (
+                <button 
+                  className="share-platform-btn custom-share-btn"
+                  onClick={handler}
+                  aria-label={`Share on ${platform}`}
+                >
+                  <div className="instagram-icon-wrapper">
+                    <Icon size={48} className="instagram-icon" />
+                  </div>
+                </button>
+              ) : (
+                <ShareButton {...props} className="share-platform-btn">
+                  <Icon size={48} round />
+                </ShareButton>
+              )}
+              <span className="platform-name">{platform}</span>
+            </div>
+          ))}
+        </div>
+        
+        <div className="share-link-section">
+          <div className="share-link-input">
+            <input
+              type="text"
+              value={shareUrl}
+              readOnly
+              className="link-input"
+            />
+            <button 
+              className={`copy-link-btn ${copied ? 'copied' : ''}`}
+              onClick={handleCopyLink}
+            >
+              {copied ? '✓ Copied' : 'Copy Link'}
+            </button>
+          </div>
+          <p className="share-note">Share this post with your network</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ==================== IMAGE CAROUSEL COMPONENT ====================
 const ImageCarousel = ({ images, videos }) => {
@@ -19,11 +167,18 @@ const ImageCarousel = ({ images, videos }) => {
   const [touchStartX, setTouchStartX] = useState(null);
   const [touchEndX, setTouchEndX] = useState(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  
   const videoRefs = useRef([]);
   const carouselRef = useRef(null);
   const observerRef = useRef(null);
+  const videoIntervalRef = useRef(null);
+  const isInViewportRef = useRef(true);
+  const scrollTimeoutRef = useRef(null);
 
-  // Combine images and videos into media array
   const media = [...(images || []), ...(videos || [])];
   
   if (!media || media.length === 0) return null;
@@ -31,64 +186,96 @@ const ImageCarousel = ({ images, videos }) => {
   const isVideo = (item) => item.type === 'video';
   const totalSlides = media.length;
 
-  // Function to handle video play/pause
-  const handleVideoPlayPause = () => {
+  const handleVideoPlayPause = useCallback(() => {
     const video = videoRefs.current[currentIndex];
     if (!video) return;
     
     if (video.paused) {
       video.play().then(() => {
         setIsVideoPlaying(true);
+        startProgressInterval();
       }).catch(e => {
         console.log("Auto-play prevented:", e);
       });
     } else {
       video.pause();
       setIsVideoPlaying(false);
+      clearProgressInterval();
     }
-  };
+  }, [currentIndex]);
 
-  const goToSlide = (index) => {
-    // Stop any playing video before changing slide
+  const startProgressInterval = useCallback(() => {
+    if (videoIntervalRef.current) {
+      clearInterval(videoIntervalRef.current);
+    }
+    videoIntervalRef.current = setInterval(() => {
+      const video = videoRefs.current[currentIndex];
+      if (video && !video.paused && video.duration) {
+        const progress = (video.currentTime / video.duration) * 100;
+        setVideoProgress(progress);
+        setVideoCurrentTime(video.currentTime);
+      }
+    }, 100);
+  }, [currentIndex]);
+
+  const clearProgressInterval = useCallback(() => {
+    if (videoIntervalRef.current) {
+      clearInterval(videoIntervalRef.current);
+      videoIntervalRef.current = null;
+    }
+  }, []);
+
+  const formatTime = useCallback((seconds) => {
+    if (isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  const goToSlide = useCallback((index) => {
     if (isVideo(media[currentIndex])) {
       const video = videoRefs.current[currentIndex];
       if (video) {
         video.pause();
         setIsVideoPlaying(false);
+        clearProgressInterval();
       }
     }
     
     setCurrentIndex(index);
+    setVideoProgress(0);
+    setVideoCurrentTime(0);
+    setVideoDuration(0);
     
-    // Auto-play video if it's a video slide
-    if (isVideo(media[index])) {
-      // Small delay to ensure DOM is updated
+    if (isVideo(media[index]) && isInViewportRef.current) {
       setTimeout(() => {
         const video = videoRefs.current[index];
         if (video) {
+          video.muted = false;
+          setIsMuted(false);
           video.play().then(() => {
             setIsVideoPlaying(true);
+            startProgressInterval();
           }).catch(e => {
             console.log("Auto-play prevented:", e);
           });
         }
       }, 100);
     }
-  };
+  }, [currentIndex, media, clearProgressInterval, startProgressInterval]);
 
-  const nextSlide = () => {
+  const nextSlide = useCallback(() => {
     goToSlide((prevIndex) => 
       prevIndex === totalSlides - 1 ? 0 : prevIndex + 1
     );
-  };
+  }, [totalSlides, goToSlide]);
 
-  const prevSlide = () => {
+  const prevSlide = useCallback(() => {
     goToSlide((prevIndex) => 
       prevIndex === 0 ? totalSlides - 1 : prevIndex - 1
     );
-  };
+  }, [goToSlide]);
 
-  // Handle touch events for mobile swipe
   const handleTouchStart = (e) => {
     setTouchStartX(e.touches[0].clientX);
   };
@@ -114,43 +301,83 @@ const ImageCarousel = ({ images, videos }) => {
     setTouchEndX(null);
   };
 
-  // Handle video events
-  const handleVideoPlay = () => {
+  const handleVideoPlay = useCallback(() => {
     setIsVideoPlaying(true);
-  };
+    startProgressInterval();
+  }, [startProgressInterval]);
 
-  const handleVideoPause = () => {
+  const handleVideoPause = useCallback(() => {
     setIsVideoPlaying(false);
-  };
+    clearProgressInterval();
+  }, [clearProgressInterval]);
 
-  const handleVideoEnded = () => {
+  const handleVideoEnded = useCallback(() => {
     setIsVideoPlaying(false);
+    setVideoProgress(0);
+    setVideoCurrentTime(0);
+    clearProgressInterval();
+  }, [clearProgressInterval]);
+
+  const handleVideoLoadedMetadata = useCallback((e) => {
+    const video = e.target;
+    if (video) {
+      setVideoDuration(video.duration);
+      setVideoCurrentTime(0);
+      setVideoProgress(0);
+    }
+  }, []);
+
+  const handleVideoTimeUpdate = useCallback((e) => {
+    const video = e.target;
+    if (video && video.duration) {
+      const progress = (video.currentTime / video.duration) * 100;
+      setVideoProgress(progress);
+      setVideoCurrentTime(video.currentTime);
+    }
+  }, []);
+
+  const handleProgressChange = (e) => {
+    const value = parseFloat(e.target.value);
+    const video = videoRefs.current[currentIndex];
+    if (video && video.duration) {
+      const newTime = (value / 100) * video.duration;
+      video.currentTime = newTime;
+      setVideoProgress(value);
+      setVideoCurrentTime(newTime);
+    }
   };
 
-  // Intersection Observer to pause video when not visible
+  const handleToggleMute = () => {
+    const video = videoRefs.current[currentIndex];
+    if (video) {
+      video.muted = !video.muted;
+      setIsMuted(video.muted);
+    }
+  };
+
   useEffect(() => {
     if (!carouselRef.current) return;
 
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting && isVideo(media[currentIndex])) {
-            const video = videoRefs.current[currentIndex];
-            if (video && !video.paused) {
-              video.pause();
-              setIsVideoPlaying(false);
-            }
-          } else if (entry.isIntersecting && isVideo(media[currentIndex])) {
-            const video = videoRefs.current[currentIndex];
-            if (video && video.paused) {
-              video.play().catch(e => console.log("Auto-play prevented:", e));
-            }
+    const handleIntersection = (entries) => {
+      entries.forEach((entry) => {
+        isInViewportRef.current = entry.isIntersecting;
+        
+        if (!entry.isIntersecting && isVideo(media[currentIndex])) {
+          const video = videoRefs.current[currentIndex];
+          if (video && !video.paused) {
+            video.pause();
+            setIsVideoPlaying(false);
+            clearProgressInterval();
           }
-        });
-      },
+        }
+      });
+    };
+
+    observerRef.current = new IntersectionObserver(
+      handleIntersection,
       {
-        threshold: 0.5, // When 50% of carousel is visible
-        rootMargin: '100px' // Add some margin for better UX
+        threshold: 0.3,
+        rootMargin: '50px'
       }
     );
 
@@ -161,16 +388,61 @@ const ImageCarousel = ({ images, videos }) => {
         observerRef.current.disconnect();
       }
     };
-  }, [currentIndex, media]);
+  }, [currentIndex, media, clearProgressInterval]);
 
-  // Handle keyboard navigation
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!isInViewportRef.current && isVideo(media[currentIndex])) {
+        const video = videoRefs.current[currentIndex];
+        if (video && !video.paused) {
+          video.pause();
+          setIsVideoPlaying(false);
+          clearProgressInterval();
+        }
+      }
+    };
+
+    const throttledScroll = () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      
+      scrollTimeoutRef.current = setTimeout(() => {
+        handleScroll();
+        scrollTimeoutRef.current = null;
+      }, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll, true);
+    window.addEventListener('wheel', throttledScroll, true);
+    
+    return () => {
+      window.removeEventListener('scroll', throttledScroll, true);
+      window.removeEventListener('wheel', throttledScroll, true);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [currentIndex, media, clearProgressInterval]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
+      const activeElement = document.activeElement;
+      const isTyping = activeElement && (
+        activeElement.tagName === 'INPUT' || 
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.isContentEditable
+      );
+      
+      if (isTyping) return;
+      
       if (e.key === 'ArrowLeft') prevSlide();
       if (e.key === 'ArrowRight') nextSlide();
-      if (e.key === ' ') {
+      if (e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault();
-        handleVideoPlayPause();
+        if (isVideo(media[currentIndex])) {
+          handleVideoPlayPause();
+        }
       }
       if (e.key === 'Escape') {
         if (isVideo(media[currentIndex])) {
@@ -178,6 +450,7 @@ const ImageCarousel = ({ images, videos }) => {
           if (video) {
             video.pause();
             setIsVideoPlaying(false);
+            clearProgressInterval();
           }
         }
       }
@@ -185,9 +458,8 @@ const ImageCarousel = ({ images, videos }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [prevSlide, nextSlide, currentIndex, media, handleVideoPlayPause]);
+  }, [prevSlide, nextSlide, currentIndex, media, handleVideoPlayPause, clearProgressInterval]);
 
-  // Clean up videos when component unmounts
   useEffect(() => {
     return () => {
       videoRefs.current.forEach(video => {
@@ -197,19 +469,33 @@ const ImageCarousel = ({ images, videos }) => {
           video.load();
         }
       });
+      
+      clearProgressInterval();
+      
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+      
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
     };
-  }, []);
+  }, [clearProgressInterval]);
+
+  useEffect(() => {
+    return () => {
+      clearProgressInterval();
+    };
+  }, [currentIndex, clearProgressInterval]);
 
   return (
     <div className="linkedin-carousel" ref={carouselRef}>
-      {/* Main Carousel Container */}
       <div 
         className="carousel-container"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Left Navigation Arrow */}
         {totalSlides > 1 && (
           <button 
             className="carousel-arrow left-arrow"
@@ -220,7 +506,6 @@ const ImageCarousel = ({ images, videos }) => {
           </button>
         )}
 
-        {/* Media Display */}
         <div className="carousel-slide">
           {isVideo(media[currentIndex]) ? (
             <div className="video-slide">
@@ -228,28 +513,30 @@ const ImageCarousel = ({ images, videos }) => {
                 ref={el => {
                   videoRefs.current[currentIndex] = el;
                   if (el) {
-                    // Clean up previous event listeners
                     el.onplay = null;
                     el.onpause = null;
                     el.onended = null;
+                    el.ontimeupdate = null;
+                    el.onloadedmetadata = null;
                     
-                    // Add new event listeners
                     el.onplay = handleVideoPlay;
                     el.onpause = handleVideoPause;
                     el.onended = handleVideoEnded;
+                    el.ontimeupdate = handleVideoTimeUpdate;
+                    el.onloadedmetadata = handleVideoLoadedMetadata;
                     
-                    // Set video attributes
                     el.muted = false;
                     el.playsInline = true;
                     el.preload = "metadata";
+                    el.controls = false;
                   }
                 }}
                 src={media[currentIndex].url}
                 className="carousel-video"
                 playsInline
+                preload="metadata"
               />
               
-              {/* Video Controls Overlay */}
               <div className="carousel-video-controls">
                 <button 
                   className="video-control-btn play-pause-btn"
@@ -260,18 +547,7 @@ const ImageCarousel = ({ images, videos }) => {
                 </button>
                 
                 <div className="video-time-display">
-                  {(() => {
-                    const video = videoRefs.current[currentIndex];
-                    if (!video) return "0:00 / 0:00";
-                    
-                    const formatTime = (seconds) => {
-                      const mins = Math.floor(seconds / 60);
-                      const secs = Math.floor(seconds % 60);
-                      return `${mins}:${secs.toString().padStart(2, '0')}`;
-                    };
-                    
-                    return `${formatTime(video.currentTime || 0)} / ${formatTime(video.duration || 0)}`;
-                  })()}
+                  {formatTime(videoCurrentTime)} / {formatTime(videoDuration)}
                 </div>
                 
                 <div className="video-progress-container">
@@ -280,31 +556,19 @@ const ImageCarousel = ({ images, videos }) => {
                     className="video-progress-slider"
                     min="0"
                     max="100"
-                    value={(() => {
-                      const video = videoRefs.current[currentIndex];
-                      if (!video || !video.duration) return 0;
-                      return (video.currentTime / video.duration) * 100;
-                    })()}
-                    onChange={(e) => {
-                      const video = videoRefs.current[currentIndex];
-                      if (video && video.duration) {
-                        video.currentTime = (e.target.value / 100) * video.duration;
-                      }
-                    }}
+                    step="0.1"
+                    value={videoProgress}
+                    onChange={handleProgressChange}
+                    aria-label="Video progress"
                   />
                 </div>
                 
                 <button 
                   className="video-control-btn mute-btn"
-                  onClick={() => {
-                    const video = videoRefs.current[currentIndex];
-                    if (video) {
-                      video.muted = !video.muted;
-                    }
-                  }}
-                  aria-label="Mute"
+                  onClick={handleToggleMute}
+                  aria-label={isMuted ? "Unmute" : "Mute"}
                 >
-                  🔈
+                  {isMuted ? '🔇' : '🔊'}
                 </button>
               </div>
               
@@ -313,6 +577,7 @@ const ImageCarousel = ({ images, videos }) => {
                   <button 
                     className="video-play-button"
                     onClick={handleVideoPlayPause}
+                    aria-label="Play video"
                   >
                     ▶
                   </button>
@@ -329,7 +594,6 @@ const ImageCarousel = ({ images, videos }) => {
           )}
         </div>
 
-        {/* Right Navigation Arrow */}
         {totalSlides > 1 && (
           <button 
             className="carousel-arrow right-arrow"
@@ -340,7 +604,6 @@ const ImageCarousel = ({ images, videos }) => {
           </button>
         )}
 
-        {/* Image Counter */}
         {totalSlides > 1 && (
           <div className="image-counter">
             {currentIndex + 1} / {totalSlides}
@@ -348,7 +611,6 @@ const ImageCarousel = ({ images, videos }) => {
         )}
       </div>
 
-      {/* Dots Indicator */}
       {totalSlides > 1 && (
         <div className="carousel-dots">
           {media.map((_, index) => (
@@ -376,25 +638,21 @@ function Feed() {
   const [commentLoading, setCommentLoading] = useState({});
   const [activeCommentSection, setActiveCommentSection] = useState(null);
   
-  // Her notification states
   const [notifCount, setNotifCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [toastData, setToastData] = useState(null);
   
-  // NEW: State for highlighted post from search
   const [highlightedPostId, setHighlightedPostId] = useState(null);
   const [searchPostData, setSearchPostData] = useState(null);
   const [isProcessingHighlight, setIsProcessingHighlight] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   
-  // NEW: Media upload states
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [mediaPreviews, setMediaPreviews] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showMediaUploader, setShowMediaUploader] = useState(false);
   
-  // NEW: Event and Poll states
-  const [postType, setPostType] = useState('text'); // 'text', 'event', 'poll'
+  const [postType, setPostType] = useState('text');
   const [eventData, setEventData] = useState({
     title: '',
     description: '',
@@ -408,19 +666,21 @@ function Feed() {
     options: ['', '']
   });
   
-  // NEW: Event RSVP and Poll voting states
   const [rsvpLoading, setRsvpLoading] = useState({});
   const [voteLoading, setVoteLoading] = useState({});
+  
+  const [sharePost, setSharePost] = useState(null);
+  const [showSharePopup, setShowSharePopup] = useState(false);
+  const [shareCounts, setShareCounts] = useState({});
   
   const navigate = useNavigate();
   const location = useLocation();
   const hasCheckedHighlightRef = useRef(false);
-  const isProcessingRef = useRef(false); // NEW: Track if we're currently processing
+  const isProcessingRef = useRef(false);
   const fileInputRef = useRef(null);
-  const highlightTimeoutRef = useRef(null); // NEW: Timeout reference
-  const lastHighlightTimeRef = useRef(0); // NEW: Track last highlight time
+  const highlightTimeoutRef = useRef(null);
+  const lastHighlightTimeRef = useRef(0);
 
-  // Cleanup preview URLs
   useEffect(() => {
     return () => {
       mediaPreviews.forEach(preview => {
@@ -431,7 +691,6 @@ function Feed() {
     };
   }, [mediaPreviews]);
 
-  // Block ALL alerts
   useEffect(() => {
     const originalAlert = window.alert;
     window.alert = function(msg) {
@@ -444,13 +703,10 @@ function Feed() {
     };
   }, []);
 
-  // Listen for custom events from ExploreSearch - FIXED VERSION
   useEffect(() => {
     console.log("🎯 [Feed] Setting up event listeners");
     
-    // Event listener for custom feedHighlight event
     const handleFeedHighlight = () => {
-      // Prevent rapid consecutive highlights (debounce)
       const now = Date.now();
       if (now - lastHighlightTimeRef.current < 1000) {
         console.log("⏸️ [Feed] Too soon since last highlight, skipping");
@@ -467,18 +723,15 @@ function Feed() {
       hasCheckedHighlightRef.current = false;
       isProcessingRef.current = false;
       
-      // Clear any existing timeout
       if (highlightTimeoutRef.current) {
         clearTimeout(highlightTimeoutRef.current);
       }
       
-      // Process highlight after a short delay
       highlightTimeoutRef.current = setTimeout(() => {
-        fetchPosts(true); // Force refresh with highlight processing
+        fetchPosts(true);
       }, 100);
     };
 
-    // Event listener for storage events (debounced)
     const handleStorageChange = (e) => {
       if (e.key === 'searchHighlightedPost' && e.newValue) {
         const now = Date.now();
@@ -489,39 +742,32 @@ function Feed() {
       }
     };
 
-    // Register event listeners
     window.addEventListener('feedHighlight', handleFeedHighlight);
     window.addEventListener('storage', handleStorageChange);
 
-    // Make refresh function available globally
     window.triggerFeedHighlight = () => {
       console.log("🎯 [Feed] Global triggerFeedHighlight() called");
       handleFeedHighlight();
     };
 
-    // Make manual refresh function available globally
     window.refreshFeedPosts = () => {
       console.log("🔄 [Feed] Global refreshFeedPosts() called");
       setRefreshTrigger(prev => prev + 1);
     };
 
     return () => {
-      // Clean up event listeners
       window.removeEventListener('feedHighlight', handleFeedHighlight);
       window.removeEventListener('storage', handleStorageChange);
       
-      // Clean up global functions
       delete window.triggerFeedHighlight;
       delete window.refreshFeedPosts;
       
-      // Clear timeout
       if (highlightTimeoutRef.current) {
         clearTimeout(highlightTimeoutRef.current);
       }
     };
   }, []);
 
-  // Combined scroll and highlight function - FIXED VERSION
   const scrollAndHighlightPost = useCallback((postId) => {
     if (!postId || isProcessingRef.current) {
       console.log("⏭️ [Feed] No post ID or already processing");
@@ -533,12 +779,10 @@ function Feed() {
     isProcessingRef.current = true;
     const elementId = `post-${postId}`;
     
-    // Clear any existing timeout
     if (highlightTimeoutRef.current) {
       clearTimeout(highlightTimeoutRef.current);
     }
     
-    // Try after a short delay to ensure DOM is ready
     highlightTimeoutRef.current = setTimeout(() => {
       const element = document.getElementById(elementId);
       console.log("🔍 [Feed] Element found?", !!element);
@@ -546,19 +790,16 @@ function Feed() {
       if (element) {
         console.log("✅ [Feed] Found element! Scrolling and highlighting...");
         
-        // Add highlight styles
         element.style.border = '3px solid #007bff';
         element.style.backgroundColor = '#f0f8ff';
         element.style.boxShadow = '0 0 20px rgba(0, 123, 255, 0.3)';
         element.style.transition = 'all 0.3s ease';
         
-        // Scroll to element
         element.scrollIntoView({ 
           behavior: 'smooth', 
           block: 'center'
         });
         
-        // Remove highlight after 4 seconds
         setTimeout(() => {
           element.style.boxShadow = '0 0 10px rgba(0, 123, 255, 0.1)';
           setTimeout(() => {
@@ -575,7 +816,6 @@ function Feed() {
         return;
       }
       
-      // If not found, try one more time after a longer delay
       console.log("⏳ [Feed] Element not found, retrying...");
       highlightTimeoutRef.current = setTimeout(() => {
         const retryElement = document.getElementById(elementId);
@@ -613,9 +853,7 @@ function Feed() {
     }, 300);
   }, [setIsProcessingHighlight]);
 
-  // Fetch posts with highlighted post handling - FIXED VERSION
   const fetchPosts = useCallback(async (forceHighlight = false) => {
-    // Prevent multiple concurrent fetches
     if (isProcessingRef.current && !forceHighlight) {
       console.log("⏸️ [Feed] Already processing, skipping fetch");
       return;
@@ -640,7 +878,6 @@ function Feed() {
       const data = await response.json();
       console.log("📝 [Feed] Fetched", data.length, "posts");
       
-      // Check for highlighted post in localStorage
       const highlightData = localStorage.getItem('searchHighlightedPost');
       let postIdToHighlight = null;
       let highlightDataObj = null;
@@ -654,7 +891,6 @@ function Feed() {
             timestamp: new Date(highlightDataObj.timestamp).toLocaleTimeString()
           });
           
-          // Check if data is recent (within 15 seconds) and not already processed
           if (highlightDataObj.postId && Date.now() - highlightDataObj.timestamp < 15000) {
             postIdToHighlight = highlightDataObj.postId;
             console.log("🎯 [Feed] Post is recent, will highlight it");
@@ -678,7 +914,6 @@ function Feed() {
         if (highlightedIndex > -1) {
           console.log("✅ [Feed] Found highlighted post at index:", highlightedIndex);
           
-          // Reorder posts: highlighted post goes to top
           const newPosts = [...data];
           const [highlightedPost] = newPosts.splice(highlightedIndex, 1);
           newPosts.unshift(highlightedPost);
@@ -687,19 +922,14 @@ function Feed() {
           console.log("📊 [Feed] Target ID:", postIdToHighlight);
           console.log("📊 [Feed] Match?", newPosts[0]?._id === postIdToHighlight ? "✅ YES" : "❌ NO");
           
-          // Set the highlighted post ID and data
           setHighlightedPostId(postIdToHighlight);
           setSearchPostData(highlightDataObj);
-          
-          // Set posts with highlighted post at top
           setPosts(newPosts);
           
-          // Clear the localStorage since we've processed it
           localStorage.removeItem('searchHighlightedPost');
           sessionStorage.removeItem('highlightedPostId');
           console.log("🗑️ [Feed] Cleared highlighted post from storage");
           
-          // Schedule scroll and highlight after render
           setTimeout(() => {
             scrollAndHighlightPost(postIdToHighlight);
           }, 200);
@@ -725,7 +955,6 @@ function Feed() {
     }
   }, [navigate, scrollAndHighlightPost, setError, setIsProcessingHighlight, setPosts, setHighlightedPostId, setSearchPostData]);
 
-  // Main initialization effect - runs on mount AND when refreshTrigger changes
   useEffect(() => {
     console.log("🔍 [Feed] Component mounted or refreshTrigger changed", { refreshTrigger });
     
@@ -740,13 +969,9 @@ function Feed() {
     const userObj = JSON.parse(userData);
     setUser(userObj);
     
-    // Reset processing state
     isProcessingRef.current = false;
-    
-    // Fetch posts
     fetchPosts();
 
-    // --- SOCKET/NOTIFICATION LOGIC ---
     const socket = getSocket();
     if (socket) {
       socket.on("new_notification", (payload) => {
@@ -781,7 +1006,6 @@ function Feed() {
     };
   }, [navigate, refreshTrigger, fetchPosts]);
 
-  // Also check URL for highlight parameters
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const highlightId = params.get('highlight');
@@ -789,7 +1013,6 @@ function Feed() {
     if (highlightId && !hasCheckedHighlightRef.current) {
       console.log("🔗 [Feed] Found highlight ID in URL:", highlightId);
       
-      // Store in localStorage
       const highlightData = {
         postId: highlightId,
         timestamp: Date.now(),
@@ -797,27 +1020,22 @@ function Feed() {
       };
       localStorage.setItem('searchHighlightedPost', JSON.stringify(highlightData));
       
-      // Trigger processing
       fetchPosts(true);
     }
   }, [location, fetchPosts]);
 
-  // Add a useEffect to handle scroll when posts are set - FIXED VERSION
   useEffect(() => {
     if (highlightedPostId && posts.length > 0 && isProcessingHighlight) {
       console.log("🔄 [Feed] Posts updated, attempting to highlight:", highlightedPostId);
       
-      // Find if the highlighted post is at the top
       const isAtTop = posts[0]?._id === highlightedPostId;
       console.log("📊 [Feed] Is highlighted post at top?", isAtTop ? "✅ YES" : "❌ NO");
       
       if (isAtTop) {
-        // Clear any existing timeout
         if (highlightTimeoutRef.current) {
           clearTimeout(highlightTimeoutRef.current);
         }
         
-        // Small delay to ensure DOM is updated
         highlightTimeoutRef.current = setTimeout(() => {
           scrollAndHighlightPost(highlightedPostId);
         }, 300);
@@ -825,16 +1043,43 @@ function Feed() {
     }
   }, [posts, highlightedPostId, isProcessingHighlight, scrollAndHighlightPost]);
 
-  // ==================== MEDIA UPLOAD FUNCTIONS ====================
+  const handleShareClick = (post) => {
+    setSharePost(post);
+    setShowSharePopup(true);
+    
+    trackShareClick(post._id);
+  };
 
-  // Handle file selection
+  const trackShareClick = async (postId) => {
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`http://localhost:5000/api/posts/${postId}/track-share`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      setShareCounts(prev => ({
+        ...prev,
+        [postId]: (prev[postId] || 0) + 1
+      }));
+    } catch (error) {
+      console.error('Error tracking share:', error);
+    }
+  };
+
+  const closeSharePopup = () => {
+    setShowSharePopup(false);
+    setSharePost(null);
+  };
+
   const handleFileSelect = (e) => {
     const files = e.target.files;
     if (!files.length) return;
 
     const fileArray = Array.from(files);
     
-    // Create preview URLs
     const newPreviews = fileArray.map(file => {
       return {
         file: file,
@@ -850,9 +1095,7 @@ function Feed() {
     setShowMediaUploader(true);
   };
 
-  // Remove a file
   const handleRemoveFile = (index) => {
-    // Revoke object URL to prevent memory leak
     if (mediaPreviews[index]?.url) {
       URL.revokeObjectURL(mediaPreviews[index].url);
     }
@@ -865,14 +1108,10 @@ function Feed() {
     }
   };
 
-  // Toggle media uploader
   const toggleMediaUploader = () => {
     setShowMediaUploader(!showMediaUploader);
   };
 
-  // ==================== EVENT AND POLL FUNCTIONS ====================
-
-  // Handle event input changes
   const handleEventChange = (field, value) => {
     setEventData(prev => ({
       ...prev,
@@ -880,7 +1119,6 @@ function Feed() {
     }));
   };
 
-  // Handle poll input changes
   const handlePollChange = (field, value) => {
     setPollData(prev => ({
       ...prev,
@@ -888,7 +1126,6 @@ function Feed() {
     }));
   };
 
-  // Handle poll option changes
   const handlePollOptionChange = (index, value) => {
     const newOptions = [...pollData.options];
     newOptions[index] = value;
@@ -898,7 +1135,6 @@ function Feed() {
     }));
   };
 
-  // Add new poll option
   const addPollOption = () => {
     if (pollData.options.length < 6) {
       setPollData(prev => ({
@@ -908,7 +1144,6 @@ function Feed() {
     }
   };
 
-  // Remove poll option
   const removePollOption = (index) => {
     if (pollData.options.length > 2) {
       const newOptions = pollData.options.filter((_, i) => i !== index);
@@ -919,9 +1154,6 @@ function Feed() {
     }
   };
 
-  // ==================== POST CREATION ====================
-
-  // Handle post creation with media - FIXED VERSION
   const handleCreatePost = async () => {
     console.log("🚀 [Feed] Post button clicked!");
     console.log("📝 Post content:", newPost);
@@ -929,12 +1161,9 @@ function Feed() {
     console.log("📁 Selected files:", selectedFiles.length);
     console.log("👤 User:", user?.name);
     
-    // Prepare post data
     let postData = { content: newPost.trim() };
     
-    // Validate based on post type
     if (postType === 'event') {
-      // Validate event data
       if (!eventData.title || !eventData.date || !eventData.time || !eventData.location) {
         setError('Please fill all required event fields');
         return;
@@ -951,7 +1180,6 @@ function Feed() {
         }
       };
     } else if (postType === 'poll') {
-      // Validate poll data
       const validOptions = pollData.options.filter(opt => opt && opt.trim());
       if (!pollData.question || validOptions.length < 2) {
         setError('Poll must have a question and at least 2 options');
@@ -963,26 +1191,21 @@ function Feed() {
         type: 'poll',
         poll: {
           question: pollData.question,
-          options: validOptions, // Send just the string options
+          options: validOptions,
         }
       };
     }
 
-    // Validate content for text posts only
     if (postType === 'text' && !postData.content.trim() && selectedFiles.length === 0) {
       setError('Post content or media is required for text posts');
       return;
     }
 
-    // For event posts, content can be empty
     if (postType === 'event' && !postData.content.trim() && selectedFiles.length === 0) {
-      // Allow empty content for events if no media
       postData.content = `Event: ${eventData.title}`;
     }
 
-    // For poll posts, content can be empty
     if (postType === 'poll' && !postData.content.trim() && selectedFiles.length === 0) {
-      // Allow empty content for polls if no media
       postData.content = `Poll: ${pollData.question}`;
     }
 
@@ -1011,7 +1234,6 @@ function Feed() {
           formData.append('poll', JSON.stringify(postData.poll));
         }
         
-        // Append all selected files
         selectedFiles.forEach((file) => {
           formData.append('media', file);
         });
@@ -1029,7 +1251,6 @@ function Feed() {
         result = await response.json();
         console.log("📡 Media upload response:", result);
       } else {
-        // Text/Event/Poll post without media
         console.log("📝 Creating post without media...");
         console.log("📦 Post data:", JSON.stringify(postData, null, 2));
         
@@ -1064,15 +1285,12 @@ function Feed() {
     }
   };
 
-  // Handle successful post creation
   const handlePostSuccess = (data) => {
-    // Clear everything
     setNewPost("");
     setSelectedFiles([]);
     setMediaPreviews([]);
     setShowMediaUploader(false);
     
-    // Clear event and poll forms
     if (postType === 'event') {
       setEventData({
         title: '',
@@ -1089,10 +1307,8 @@ function Feed() {
       });
     }
     
-    // Reset to text post type
     setPostType('text');
     
-    // Add new post to feed
     const newPostData = data.post || data;
     console.log("🎉 New post data to add:", newPostData);
     
@@ -1103,9 +1319,6 @@ function Feed() {
     console.log("🔄 Posts updated, new post count:", posts.length + 1);
   };
 
-  // ==================== POST INTERACTIONS ====================
-
-  // Handle event RSVP
   const handleEventRSVP = async (postId, status) => {
     if (!user) return;
 
@@ -1142,7 +1355,6 @@ function Feed() {
     }
   };
 
-  // Handle poll voting
   const handlePollVote = async (postId, optionIndex) => {
     if (!user) return;
 
@@ -1245,8 +1457,6 @@ function Feed() {
     }
   };
 
-  // ==================== POST DELETE FUNCTION ====================
-
   const handleDeletePost = async (postId) => {
     if (!window.confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
       return;
@@ -1274,7 +1484,6 @@ function Feed() {
     }
   };
 
-  // Report post function
   const handleReportPost = async (postId) => {
     const reason = prompt("Please provide reason for reporting this post (harassment, spam, inappropriate content, etc.):");
     
@@ -1316,14 +1525,12 @@ function Feed() {
     return post.likes?.includes(user?.id);
   };
 
-  // Check if user has RSVPed to an event
   const getUserRSVPStatus = (post) => {
     if (!post.event?.attendees || !user) return null;
     const userRSVP = post.event.attendees.find(a => a.userId === user.id);
     return userRSVP ? userRSVP.status : null;
   };
 
-  // Check if user has voted in a poll
   const getUserVoteStatus = (post) => {
     if (!post.poll?.voters || !user) return null;
     return post.poll.voters.find(v => v.userId === user.id);
@@ -1353,7 +1560,6 @@ function Feed() {
     setActiveCommentSection(activeCommentSection === postId ? null : postId);
   };
 
-  // Notification click handler
   const handleClickNotification = async () => {
     const token = localStorage.getItem("token");
 
@@ -1374,14 +1580,12 @@ function Feed() {
     navigate("/notifications");
   };
 
-  // Handler for user selected from search
   const handleUserSelectFromSearch = (selectedUser) => {
     if (selectedUser && selectedUser._id) {
         navigate(`/profile/${selectedUser._id}`); 
     }
   };
 
-  // Manual refresh function
   const handleManualRefresh = () => {
     console.log("🔄 [Feed] Manual refresh triggered");
     hasCheckedHighlightRef.current = false;
@@ -1389,9 +1593,6 @@ function Feed() {
     setRefreshTrigger(prev => prev + 1);
   };
 
-  // ==================== RENDER FUNCTIONS ====================
-
-  // Render event card
   const renderEventCard = (event) => {
     if (!event) return null;
     
@@ -1452,7 +1653,6 @@ function Feed() {
     );
   };
 
-  // Render poll card
   const renderPollCard = (poll, postId) => {
     if (!poll) return null;
     
@@ -1517,11 +1717,9 @@ function Feed() {
     );
   };
 
-  // Updated renderMedia function to use carousel
   const renderMedia = (media) => {
     if (!media || media.length === 0) return null;
     
-    // Separate images and videos for the carousel
     const images = media.filter(item => item.type === 'image');
     const videos = media.filter(item => item.type === 'video');
     
@@ -1540,12 +1738,10 @@ function Feed() {
 
   return (
     <div className="feed-container">
-      {/* Header */}
       <header className="feed-header">
         <div className="header-left">
           <div className="logo" onClick={() => navigate("/feed")}>💼 CampusConnect</div>
           
-          {/* SEARCH BAR */}
           <div className="feed-search-wrapper">
              <ExploreSearch onUserSelect={handleUserSelectFromSearch} />
           </div>
@@ -1607,7 +1803,6 @@ function Feed() {
         </div>
       </header>
 
-      {/* Error/Success Notifications */}
       {error && (
         <div className="notification error">
           {error}
@@ -1621,7 +1816,10 @@ function Feed() {
         </div>
       )}
 
-      {/* Notification Panel */}
+      {showSharePopup && sharePost && (
+        <SocialSharePopup post={sharePost} onClose={closeSharePopup} />
+      )}
+
       {showNotifications && (
         <div className="notification-panel-overlay" onClick={() => setShowNotifications(false)}>
           <div className="notification-panel" onClick={(e) => e.stopPropagation()}>
@@ -1645,7 +1843,6 @@ function Feed() {
 
       <div className="feed-content">
         <div className="main-feed">
-          {/* User Welcome Card */}
           <div className="welcome-card">
             <div className="welcome-content">
               <div className="welcome-avatar">
@@ -1663,7 +1860,6 @@ function Feed() {
             </div>
           </div>
 
-          {/* Create Post Card */}
           <div className="create-post-card">
             <div className="post-input-section">
               <div className="user-avatar-small">
@@ -1684,7 +1880,6 @@ function Feed() {
               />
             </div>
             
-            {/* Event Creation Form */}
             {postType === 'event' && (
               <div className="event-form">
                 <div className="form-row">
@@ -1756,7 +1951,6 @@ function Feed() {
               </div>
             )}
             
-            {/* Poll Creation Form */}
             {postType === 'poll' && (
               <div className="poll-form">
                 <div className="form-group">
@@ -1808,7 +2002,6 @@ function Feed() {
               </div>
             )}
             
-            {/* Media Upload Section (only for text posts) */}
             {postType === 'text' && showMediaUploader && (
               <div className="media-upload-section">
                 <div className="media-preview-container">
@@ -1865,7 +2058,6 @@ function Feed() {
             
             <div className="post-actions">
               <div className="post-features" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                {/* Media upload button (only for text posts) */}
                 {postType === 'text' && (
                   <button 
                     className="feature-btn" 
@@ -1889,7 +2081,6 @@ function Feed() {
                   </button>
                 )}
                 
-                {/* Event Button */}
                 <button 
                   className="feature-btn" 
                   title="Create Event"
@@ -1911,7 +2102,6 @@ function Feed() {
                   📅 Event
                 </button>
                 
-                {/* Poll Button */}
                 <button 
                   className="feature-btn" 
                   title="Create Poll"
@@ -1933,7 +2123,6 @@ function Feed() {
                   📊 Poll
                 </button>
                 
-                {/* Hidden file input for media upload */}
                 <input
                   type="file"
                   id="media-upload-hidden"
@@ -1971,7 +2160,6 @@ function Feed() {
             </div>
           </div>
 
-          {/* Posts Feed */}
           <div className="posts-container">
             {posts.length === 0 ? (
               <div className="empty-state">
@@ -2057,7 +2245,6 @@ function Feed() {
                         </div>
                       </div>
                       <div className="post-actions-right">
-                        {/* Delete Button (only for owner or admin) */}
                         {(isOwner || user?.role === 'admin') && (
                           <button 
                             className="delete-post-btn"
@@ -2074,16 +2261,12 @@ function Feed() {
                     <div className="post-content">
                       <p>{post.content}</p>
                       
-                      {/* Display Event */}
                       {post.type === 'event' && post.event && renderEventCard(post.event)}
                       
-                      {/* Display Poll */}
                       {post.type === 'poll' && post.poll && renderPollCard(post.poll, post._id)}
                       
-                      {/* Display Media with LinkedIn-style Carousel */}
                       {post.media && post.media.length > 0 && renderMedia(post.media)}
                       
-                      {/* Legacy imageUrl support */}
                       {post.imageUrl && !post.media && (
                         <div className="post-image">
                           <img src={post.imageUrl} alt="Post content" />
@@ -2091,7 +2274,6 @@ function Feed() {
                       )}
                     </div>
 
-                    {/* Event RSVP Buttons */}
                     {post.type === 'event' && post.event && (
                       <div className="event-actions">
                         {userRSVPStatus === 'going' ? (
@@ -2126,6 +2308,9 @@ function Feed() {
                       <span className="stat-item">
                         💬 {post.comments?.length || 0}
                       </span>
+                      <span className="stat-item">
+                        🔄 {shareCounts[post._id] || 0}
+                      </span>
                       {post.type === 'event' && post.event && (
                         <span className="stat-item">
                           👥 {post.event.rsvpCount || 0}
@@ -2156,7 +2341,10 @@ function Feed() {
                       >
                         💬 Comment
                       </button>
-                      <button className="action-btn share-btn">
+                      <button 
+                        className="action-btn share-btn"
+                        onClick={() => handleShareClick(post)}
+                      >
                         🔄 Share
                       </button>
                       <button 
@@ -2168,10 +2356,8 @@ function Feed() {
                       </button>
                     </div>
 
-                    {/* Comments Section */}
                     {activeCommentSection === post._id && (
                       <div className="comments-section">
-                        {/* Display Existing Comments */}
                         {post.comments && post.comments.length > 0 && (
                           <div className="comments-list">
                             <h4>Comments ({post.comments.length})</h4>
@@ -2194,7 +2380,6 @@ function Feed() {
                           </div>
                         )}
 
-                        {/* Add Comment */}
                         <div className="add-comment">
                           <div className="comment-avatar-small">
                             {getUserAvatar(user)}
@@ -2224,9 +2409,7 @@ function Feed() {
           </div>
         </div>
 
-        {/* Sidebar */}
         <div className="sidebar">
-          {/* User Profile Card */}
           <div className="sidebar-card user-profile-card">
             <div className="profile-header">
               <div className="profile-avatar">
@@ -2246,6 +2429,8 @@ function Feed() {
                   <span>{posts.filter(p => p.user?.id === user.id).length} posts</span>
                   <span>•</span>
                   <span>{(posts.reduce((acc, post) => acc + (post.likes?.length || 0), 0))} likes</span>
+                  <span>•</span>
+                  <span>{(Object.values(shareCounts).reduce((a, b) => a + b, 0))} shares</span>
                 </div>
               </div>
             </div>
@@ -2273,13 +2458,12 @@ function Feed() {
                 <span>Total Likes</span>
               </div>
               <div className="stat">
-                <strong>{(posts.reduce((acc, post) => acc + (post.comments?.length || 0), 0))}</strong>
-                <span>Total Comments</span>
+                <strong>{(Object.values(shareCounts).reduce((a, b) => a + b, 0))}</strong>
+                <span>Total Shares</span>
               </div>
             </div>
           </div>
 
-          {/* Upcoming Events Sidebar */}
           {posts.filter(post => post.type === 'event' && post.event).length > 0 && (
             <div className="sidebar-card">
               <h3>📅 Upcoming Events</h3>
@@ -2308,7 +2492,6 @@ function Feed() {
             </div>
           )}
 
-          {/* Active Polls Sidebar */}
           {posts.filter(post => post.type === 'poll' && post.poll).length > 0 && (
             <div className="sidebar-card">
               <h3>📊 Active Polls</h3>
@@ -2332,7 +2515,6 @@ function Feed() {
         </div>
       </div>
       
-      {/* Toast Component */}
       <Toast
         notification={toastData}
         onClose={() => setToastData(null)}
