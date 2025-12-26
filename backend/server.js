@@ -1,4 +1,4 @@
-// server.js - COMPLETE UPDATED VERSION WITH EVENTS, POLLS, AND DELETE
+// server.js - COMPLETE UPDATED VERSION WITH CONNECTION HISTORY TRACKING
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ObjectId } = require("mongodb");
@@ -149,6 +149,8 @@ const connectDB = async () => {
     await db.collection('notifications').createIndex({ recipientId: 1, createdAt: -1 });
     await db.collection('posts').createIndex({ type: 1 }); // New index for post types
     await db.collection('posts').createIndex({ "poll.question": "text", content: "text" }); // Text search index
+    await db.collection('connectionHistory').createIndex({ userId: 1, date: -1 }); // For connection history
+    await db.collection('connectionHistory').createIndex({ userId: 1, targetUserId: 1 }); // For duplicate prevention
     
   } catch (err) {
     console.error("❌ MongoDB connection failed", err);
@@ -272,6 +274,82 @@ const createNotification = async ({ recipientId, senderId, type, postId = null, 
   }
 };
 
+// ==================== CONNECTION HISTORY HELPER ====================
+
+// Record connection history event
+const recordConnectionEvent = async (userId, targetUserId, targetUserName, type, userData = {}) => {
+  try {
+    const historyEvent = {
+      userId: new ObjectId(userId),
+      targetUserId: new ObjectId(targetUserId),
+      targetUserName,
+      type, // 'connected' or 'disconnected'
+      date: new Date(),
+      userData: {
+        name: userData.name || '',
+        role: userData.role || '',
+        department: userData.department || '',
+        company: userData.company || '',
+        email: userData.email || '',
+        ...userData
+      }
+    };
+
+    const result = await db.collection('connectionHistory').insertOne(historyEvent);
+    
+    console.log(`📊 Connection history recorded: ${type} event for user ${userId}`);
+    
+    return result.insertedId;
+  } catch (error) {
+    console.error("Error recording connection history:", error);
+    throw error;
+  }
+};
+
+// Get connection history for a user
+const getConnectionHistory = async (userId, timeframe = 'all') => {
+  try {
+    const query = { userId: new ObjectId(userId) };
+    const now = new Date();
+    
+    // Apply timeframe filter
+    switch(timeframe) {
+      case '7days':
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        query.date = { $gte: sevenDaysAgo };
+        break;
+      case '30days':
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        query.date = { $gte: thirtyDaysAgo };
+        break;
+      case '90days':
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        query.date = { $gte: ninetyDaysAgo };
+        break;
+      // 'all' includes all history
+    }
+    
+    const history = await db.collection('connectionHistory')
+      .find(query)
+      .sort({ date: 1 }) // Sort by date ascending for timeline
+      .toArray();
+    
+    return history.map(item => ({
+      type: item.type,
+      date: item.date,
+      userId: item.targetUserId.toString(),
+      userName: item.targetUserName,
+      userData: item.userData
+    }));
+  } catch (error) {
+    console.error("Error fetching connection history:", error);
+    throw error;
+  }
+};
+
 // ==================== AUTH ROUTES ====================
 
 // Register with Cloudinary
@@ -328,7 +406,7 @@ app.post("/api/auth/register", profileUpload.single('profilePhoto'), async (req,
       contact,
       role: role || 'student',
       profilePhoto: profilePhotoUrl,
-      bio: 'Passionate about technology and innovation. Always eager to learn and grow.',
+      bio: bio || 'Passionate about technology and innovation. Always eager to learn and grow.',
       isPrivate: isPrivate === 'true' || isPrivate === true,
       skills: ["JavaScript", "React", "Node.js", "Python"],
       campus: 'SIGCE Campus',
@@ -468,8 +546,6 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
-// ==================== PROFILE ROUTES ====================
 
 // ==================== PROFILE ROUTES ====================
 
@@ -1958,9 +2034,142 @@ app.get("/api/users", auth, async (req, res) => {
   }
 });
 
+// ==================== CONNECTION HISTORY ROUTES ====================
+
+// Record connection event
+app.post("/api/network/history/record", auth, async (req, res) => {
+  try {
+    const { type, date, userId, userName, userData } = req.body;
+    const currentUserId = req.user.userId;
+    
+    if (!type || !['connected', 'disconnected'].includes(type)) {
+      return res.status(400).json({ message: 'Invalid event type' });
+    }
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'Target user ID is required' });
+    }
+    
+    // Record the history event
+    const historyId = await recordConnectionEvent(
+      currentUserId,
+      userId,
+      userName || 'Unknown User',
+      type,
+      userData
+    );
+    
+    res.json({ 
+      success: true, 
+      message: 'Connection history recorded',
+      historyId 
+    });
+  } catch (error) {
+    console.error("Error recording connection history:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get connection history with timeframe filter
+app.get("/api/network/history", auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { timeframe = 'all' } = req.query;
+    
+    const history = await getConnectionHistory(userId, timeframe);
+    
+    res.json({ 
+      success: true,
+      history,
+      timeframe,
+      count: history.length
+    });
+  } catch (error) {
+    console.error("Error fetching connection history:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Initialize history from existing connections (run once)
+app.post("/api/network/history/initialize", auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Get current user with connections
+    const user = await db.collection('users').findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { connections: 1, name: 1 } }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const connectionIds = user.connections || [];
+    
+    if (connectionIds.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'No existing connections to initialize history from',
+        count: 0 
+      });
+    }
+    
+    // Clear existing history for this user
+    await db.collection('connectionHistory').deleteMany({ userId: new ObjectId(userId) });
+    
+    // Create history events for each existing connection
+    const connectionEvents = [];
+    
+    for (const connectionId of connectionIds) {
+      try {
+        // Get connection user details
+        const connectionUser = await db.collection('users').findOne(
+          { _id: new ObjectId(connectionId) },
+          { projection: { name: 1, role: 1, department: 1, company: 1, email: 1 } }
+        );
+        
+        if (connectionUser) {
+          // Create a connected event (use current date as estimate)
+          await recordConnectionEvent(
+            userId,
+            connectionId,
+            connectionUser.name,
+            'connected',
+            {
+              name: connectionUser.name,
+              role: connectionUser.role,
+              department: connectionUser.department,
+              company: connectionUser.company,
+              email: connectionUser.email
+            }
+          );
+          
+          connectionEvents.push({
+            userId: connectionId,
+            userName: connectionUser.name
+          });
+        }
+      } catch (err) {
+        console.error(`Error processing connection ${connectionId}:`, err);
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `Initialized ${connectionEvents.length} connection events`,
+      count: connectionEvents.length,
+      connections: connectionEvents
+    });
+  } catch (error) {
+    console.error("Error initializing history:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // ==================== NETWORK ROUTES ====================
 
-// Send connection request (updated field names)
+// Send connection request (with history recording)
 app.post("/api/network/request/:userId", auth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -2030,7 +2239,7 @@ app.post("/api/network/request/:userId", auth, async (req, res) => {
   }
 });
 
-// Accept connection request (updated field names)
+// Accept connection request (with history recording)
 app.post("/api/network/accept/:userId", auth, async (req, res) => {
   try {
     const senderUserId = req.params.userId;
@@ -2083,6 +2292,36 @@ app.post("/api/network/accept/:userId", auth, async (req, res) => {
       { $push: { following: currentUserId } }
     );
 
+    // ✅ RECORD CONNECTION HISTORY EVENT
+    await recordConnectionEvent(
+      currentUserId,
+      senderUserId,
+      senderUser.name,
+      'connected',
+      {
+        name: senderUser.name,
+        role: senderUser.role,
+        department: senderUser.department,
+        company: senderUser.company,
+        email: senderUser.email
+      }
+    );
+
+    // Also record for the sender user (optional)
+    await recordConnectionEvent(
+      senderUserId,
+      currentUserId,
+      currentUser.name,
+      'connected',
+      {
+        name: currentUser.name,
+        role: currentUser.role,
+        department: currentUser.department,
+        company: currentUser.company,
+        email: currentUser.email
+      }
+    );
+
     // Create notification for the sender
     await createNotification({
       recipientId: senderUserId,
@@ -2101,7 +2340,7 @@ app.post("/api/network/accept/:userId", auth, async (req, res) => {
   }
 });
 
-// Reject connection request (updated field names)
+// Reject connection request
 app.post("/api/network/reject/:userId", auth, async (req, res) => {
   try {
     const senderUserId = req.params.userId;
@@ -2141,7 +2380,7 @@ app.post("/api/network/reject/:userId", auth, async (req, res) => {
   }
 });
 
-// Cancel outgoing connection request (updated field names)
+// Cancel outgoing connection request
 app.post("/api/network/cancel/:userId", auth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -2181,7 +2420,7 @@ app.post("/api/network/cancel/:userId", auth, async (req, res) => {
   }
 });
 
-// Remove connection
+// Remove connection (with history recording)
 app.post("/api/network/remove/:userId", auth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -2194,6 +2433,12 @@ app.post("/api/network/remove/:userId", auth, async (req, res) => {
 
     // Check if connected
     const currentUser = await db.collection('users').findOne({ _id: new ObjectId(currentUserId) });
+    const targetUser = await db.collection('users').findOne({ _id: new ObjectId(targetUserId) });
+    
+    if (!targetUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     const isConnected = (currentUser.connections || []).includes(targetUserId);
     
     if (!isConnected) {
@@ -2222,6 +2467,36 @@ app.post("/api/network/remove/:userId", auth, async (req, res) => {
       { $pull: { following: currentUserId } }
     );
 
+    // ✅ RECORD DISCONNECTION HISTORY EVENT
+    await recordConnectionEvent(
+      currentUserId,
+      targetUserId,
+      targetUser.name,
+      'disconnected',
+      {
+        name: targetUser.name,
+        role: targetUser.role,
+        department: targetUser.department,
+        company: targetUser.company,
+        email: targetUser.email
+      }
+    );
+
+    // Also record for the other user (optional)
+    await recordConnectionEvent(
+      targetUserId,
+      currentUserId,
+      currentUser.name,
+      'disconnected',
+      {
+        name: currentUser.name,
+        role: currentUser.role,
+        department: currentUser.department,
+        company: currentUser.company,
+        email: currentUser.email
+      }
+    );
+
     res.json({ 
       success: true, 
       message: "Connection removed successfully" 
@@ -2232,7 +2507,7 @@ app.post("/api/network/remove/:userId", auth, async (req, res) => {
   }
 });
 
-// Get network status with a user (updated field names)
+// Get network status with a user
 app.get("/api/network/status/:userId", auth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -2309,14 +2584,37 @@ app.get("/api/network/connections", auth, async (req, res) => {
         department: 1,
         designation: 1,
         bio: 1,
-        skills: 1
+        skills: 1,
+        company: 1,
+        createdAt: 1
       })
       .toArray();
 
+    // Add connection date from history
+    const connectionsWithDetails = await Promise.all(
+      connections.map(async (conn) => {
+        // Try to get connection date from history
+        const connectionEvent = await db.collection('connectionHistory')
+          .findOne({
+            userId: new ObjectId(userId),
+            targetUserId: conn._id,
+            type: 'connected'
+          }, {
+            sort: { date: -1 },
+            projection: { date: 1 }
+          });
+        
+        return {
+          ...conn,
+          connectedAt: connectionEvent?.date || conn.createdAt
+        };
+      })
+    );
+
     res.json({
       success: true,
-      count: connections.length,
-      connections
+      count: connectionsWithDetails.length,
+      connections: connectionsWithDetails
     });
   } catch (error) {
     console.error("Error getting connections:", error);
@@ -2324,7 +2622,87 @@ app.get("/api/network/connections", auth, async (req, res) => {
   }
 });
 
-// Get received connection requests (updated field names)
+// Get connection history endpoint for frontend
+app.get("/api/network/connections/history", auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { timeframe = 'all' } = req.query;
+    
+    const history = await getConnectionHistory(userId, timeframe);
+    
+    res.json({ 
+      success: true,
+      history,
+      timeframe,
+      count: history.length
+    });
+  } catch (error) {
+    console.error("Error fetching connection history:", error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get users with connections (for mutual connections)
+app.get("/api/users/with-connections", auth, async (req, res) => {
+  try {
+    const currentUserId = req.user.userId;
+    
+    // Get current user's connections
+    const currentUser = await db.collection('users').findOne(
+      { _id: new ObjectId(currentUserId) },
+      { projection: { connections: 1 } }
+    );
+    
+    const currentUserConnections = currentUser?.connections || [];
+    
+    // Get all users who are not the current user
+    const users = await db.collection('users')
+      .find({ 
+        _id: { $ne: new ObjectId(currentUserId) },
+        connections: { $exists: true, $ne: [] }
+      })
+      .project({
+        _id: 1,
+        name: 1,
+        email: 1,
+        profilePhoto: 1,
+        role: 1,
+        department: 1,
+        bio: 1,
+        skills: 1,
+        connections: 1
+      })
+      .limit(100)
+      .toArray();
+    
+    // Add mutual connection count
+    const usersWithMutualCount = users.map(user => {
+      const userConnections = user.connections || [];
+      const mutualConnections = userConnections.filter(connId => 
+        currentUserConnections.includes(connId.toString())
+      );
+      
+      return {
+        ...user,
+        mutualCount: mutualConnections.length,
+        connections: userConnections
+      };
+    });
+    
+    // Sort by mutual count (highest first)
+    usersWithMutualCount.sort((a, b) => b.mutualCount - a.mutualCount);
+    
+    res.json({
+      success: true,
+      users: usersWithMutualCount
+    });
+  } catch (error) {
+    console.error("Error fetching users with connections:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// Get received connection requests
 app.get("/api/network/requests/received", auth, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -2362,7 +2740,7 @@ app.get("/api/network/requests/received", auth, async (req, res) => {
   }
 });
 
-// Get sent connection requests (updated field names)
+// Get sent connection requests
 app.get("/api/network/requests/sent", auth, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -2400,7 +2778,7 @@ app.get("/api/network/requests/sent", auth, async (req, res) => {
   }
 });
 
-// Search users for networking (updated field names)
+// Search users for networking
 app.get("/api/network/search", auth, async (req, res) => {
   try {
     const { query, department, role, excludeConnected = true } = req.query;
@@ -2491,7 +2869,7 @@ app.get("/api/network/search", auth, async (req, res) => {
   }
 });
 
-// Get network statistics (updated field names)
+// Get network statistics
 app.get("/api/network/stats", auth, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -2509,6 +2887,19 @@ app.get("/api/network/stats", auth, async (req, res) => {
       }
     );
 
+    // Get connection history stats
+    const historyStats = await db.collection('connectionHistory').aggregate([
+      { $match: { userId: new ObjectId(userId) } },
+      { $group: {
+          _id: '$type',
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    const connectedCount = historyStats.find(stat => stat._id === 'connected')?.count || 0;
+    const disconnectedCount = historyStats.find(stat => stat._id === 'disconnected')?.count || 0;
+
     res.json({
       success: true,
       stats: {
@@ -2516,7 +2907,11 @@ app.get("/api/network/stats", auth, async (req, res) => {
         receivedRequests: user?.receivedRequests?.length || 0,
         sentRequests: user?.sentRequests?.length || 0,
         followers: user?.followers?.length || 0,
-        following: user?.following?.length || 0
+        following: user?.following?.length || 0,
+        totalHistoryEvents: connectedCount + disconnectedCount,
+        connectedEvents: connectedCount,
+        disconnectedEvents: disconnectedCount,
+        netGrowth: connectedCount - disconnectedCount
       }
     });
   } catch (error) {
@@ -2771,12 +3166,21 @@ app.get("/api/admin/stats", auth, requireAdmin, async (req, res) => {
     const faculty = await db.collection('users').countDocuments({ role: 'faculty' });
     const admins = await db.collection('users').countDocuments({ role: 'admin' });
     
+    // Connection history stats
+    const totalConnections = await db.collection('connectionHistory').countDocuments({ type: 'connected' });
+    const totalDisconnections = await db.collection('connectionHistory').countDocuments({ type: 'disconnected' });
+    
     res.json({
       totalUsers,
       totalPosts,
       postsToday,
       postsByType: { text: textPosts, event: eventPosts, poll: pollPosts },
-      usersByRole: { students, faculty, admins }
+      usersByRole: { students, faculty, admins },
+      connectionStats: {
+        totalConnections,
+        totalDisconnections,
+        netGrowth: totalConnections - totalDisconnections
+      }
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -3065,6 +3469,24 @@ app.get("/api/admin/analytics", auth, requireAdmin, async (req, res) => {
         { $sort: { _id: 1 } }
       ]).toArray();
 
+    // Daily connections for last 7 days
+    const dailyConnections = await db.collection('connectionHistory')
+      .aggregate([
+        {
+          $match: {
+            date: { $gte: sevenDaysAgo },
+            type: 'connected'
+          }
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]).toArray();
+
     // Top active users
     const topUsers = await db.collection('users')
       .aggregate([
@@ -3124,6 +3546,7 @@ app.get("/api/admin/analytics", auth, requireAdmin, async (req, res) => {
 
     res.json({
       dailyPosts,
+      dailyConnections,
       topUsers,
       postsByType,
       postsByDept,
@@ -3273,6 +3696,14 @@ app.get("/api/stats", auth, async (req, res) => {
       totalUserLikes += post.likes?.length || 0;
     });
 
+    // Get connection stats
+    const connectionHistory = await db.collection('connectionHistory')
+      .find({ userId: new ObjectId(userId) })
+      .toArray();
+    
+    const connectedEvents = connectionHistory.filter(h => h.type === 'connected').length;
+    const disconnectedEvents = connectionHistory.filter(h => h.type === 'disconnected').length;
+
     res.json({
       campusStats: {
         totalPosts,
@@ -3283,6 +3714,12 @@ app.get("/api/stats", auth, async (req, res) => {
         posts: userPosts,
         likes: totalUserLikes,
         connections: user?.connections?.length || 0
+      },
+      connectionStats: {
+        totalEvents: connectionHistory.length,
+        connectionsMade: connectedEvents,
+        connectionsRemoved: disconnectedEvents,
+        netGrowth: connectedEvents - disconnectedEvents
       }
     });
   } catch (error) {
@@ -3298,7 +3735,7 @@ app.get("/", (req, res) => {
     message: "Swish Backend API is running 🚀",
     version: "2.0",
     campus: "SIGCE Campus",
-    features: "Complete Event & Poll System, Cloudinary Media Upload, Real-time Notifications, Admin Dashboard, Post Deletion"
+    features: "Complete Event & Poll System, Cloudinary Media Upload, Real-time Notifications, Admin Dashboard, Post Deletion, Connection History Tracking"
   });
 });
 
@@ -3306,6 +3743,7 @@ app.get("/api/test", async (req, res) => {
   try {
     const users = await db.collection('users').find().toArray();
     const posts = await db.collection('posts').find().toArray();
+    const connectionHistory = await db.collection('connectionHistory').find().toArray();
     
     // Count posts by type
     const textPosts = await db.collection('posts').countDocuments({ type: 'text' });
@@ -3316,13 +3754,15 @@ app.get("/api/test", async (req, res) => {
       message: 'API is working!', 
       users: users.length,
       posts: posts.length,
+      connectionHistory: connectionHistory.length,
       postTypes: {
         text: textPosts,
         event: eventPosts,
         poll: pollPosts
       },
       campus: 'SIGCE Campus',
-      media: 'Cloudinary uploads active'
+      media: 'Cloudinary uploads active',
+      tracking: 'Connection history tracking enabled'
     });
   } catch (error) {
     res.status(500).json({ message: 'Database error', error: error.message });
@@ -3339,4 +3779,4 @@ app.use((err, req, res, next) => {
 });
 
 // Start server (use server, not app)
-server.listen(PORT, () => console.log(`🚀 Server running on port: ${PORT} with Complete Event & Poll System`));
+server.listen(PORT, () => console.log(`🚀 Server running on port: ${PORT} with Complete Connection History Tracking`));

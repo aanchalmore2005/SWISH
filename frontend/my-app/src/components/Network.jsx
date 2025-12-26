@@ -5,6 +5,7 @@ import ExploreSearch from "../components/ExploreSearch";
 import "../styles/Network.css";
 
 function Network() {
+  // 🔵 STATES
   const [users, setUsers] = useState([]);
   const [incoming, setIncoming] = useState([]);
   const [outgoing, setOutgoing] = useState([]);
@@ -15,9 +16,11 @@ function Network() {
   const [activeTab, setActiveTab] = useState("people");
   const [darkMode, setDarkMode] = useState(false);
   const [filteredUsers, setFilteredUsers] = useState([]);
-  const [filteredConnections, setFilteredConnections] = useState([]);
   const [quickActionFilter, setQuickActionFilter] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [connectionHistory, setConnectionHistory] = useState([]);
+  const [usersWithConnections, setUsersWithConnections] = useState([]);
+  const [graphTimeframe, setGraphTimeframe] = useState("all"); // "7days", "30days", "90days", "all"
   
   // Modal states
   const [showNetworkGrowthModal, setShowNetworkGrowthModal] = useState(false);
@@ -29,10 +32,22 @@ function Network() {
   const token = localStorage.getItem("token");
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
-  // BarChart Component for Network Growth
-  const BarChart = ({ data, maxValue, color = "#4f46e5", height = 200 }) => {
+  // 🔵 ENHANCED LINE CHART COMPONENT
+  const LineChart = ({ data, maxValue, height = 220, color = "#4f46e5" }) => {
+    if (!data || data.length === 0) return null;
+    
+    const points = data
+      .map((d, i) => {
+        const x = (i / (data.length - 1 || 1)) * 100;
+        const y = ((maxValue - d.value) / maxValue) * 100;
+        return `${x}% ${y}%`;
+      })
+      .join(", ");
+
+    const areaPoints = `0% 100%, ${points}, 100% 100%`;
+    
     return (
-      <div className="bar-chart-container" style={{ height: `${height}px` }}>
+      <div className="line-chart-container" style={{ height: `${height}px` }}>
         <div className="chart-y-axis">
           {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
             <div key={i} className="y-tick">
@@ -40,217 +55,362 @@ function Network() {
             </div>
           ))}
         </div>
-        <div className="chart-bars">
-          {data.map((item, index) => (
-            <div key={index} className="bar-wrapper">
-              <div 
-                className="chart-bar" 
-                style={{ 
-                  height: `${(item.value / maxValue) * 100}%`,
-                  background: color 
-                }}
-                title={`${item.label}: ${item.value}`}
-              >
-                <span className="bar-value">{item.value}</span>
+        <div className="chart-lines">
+          <svg className="chart-svg" width="100%" height="100%" preserveAspectRatio="none">
+            {/* Area under line */}
+            <polygon
+              points={areaPoints}
+              fill={`url(#gradient-${color.replace('#', '')})`}
+              fillOpacity="0.2"
+            />
+            
+            <defs>
+              <linearGradient id={`gradient-${color.replace('#', '')}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+                <stop offset="100%" stopColor={color} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            
+            {/* Main line */}
+            <polyline
+              points={points}
+              fill="none"
+              stroke={color}
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            
+            {/* Data points with interaction */}
+            {data.map((item, index) => {
+              const x = (index / (data.length - 1)) * 100;
+              const y = ((maxValue - item.value) / maxValue) * 100;
+              return (
+                <g key={index}>
+                  <circle
+                    cx={`${x}%`}
+                    cy={`${y}%`}
+                    r="4"
+                    fill="white"
+                    stroke={color}
+                    strokeWidth="2"
+                    className="data-point"
+                    onMouseEnter={(e) => {
+                      const tooltip = e.target.parentNode.querySelector('.data-tooltip');
+                      if (tooltip) tooltip.style.display = 'block';
+                    }}
+                    onMouseLeave={(e) => {
+                      const tooltip = e.target.parentNode.querySelector('.data-tooltip');
+                      if (tooltip) tooltip.style.display = 'none';
+                    }}
+                  />
+                  <foreignObject
+                    x={`${x}%`}
+                    y={`${y}%`}
+                    width="120"
+                    height="60"
+                    className="data-tooltip-container"
+                  >
+                    <div className="data-tooltip" style={{ display: 'none' }}>
+                      <div className="tooltip-date">{item.label}</div>
+                      <div className="tooltip-value">Total: {item.value}</div>
+                      {item.rawCount !== 0 && (
+                        <div className={`tooltip-change ${item.rawCount > 0 ? 'positive' : 'negative'}`}>
+                          {item.rawCount > 0 ? `+${item.rawCount}` : item.rawCount} connections
+                        </div>
+                      )}
+                    </div>
+                  </foreignObject>
+                </g>
+              );
+            })}
+          </svg>
+          
+          {/* X-axis labels */}
+          <div className="x-axis-labels">
+            {data.map((item, index) => (
+              <div key={index} className="x-label">
+                <div className="x-label-text">{item.label}</div>
+                {item.rawCount !== undefined && item.rawCount !== 0 && (
+                  <div className={`x-label-count ${item.rawCount > 0 ? 'positive' : 'negative'}`}>
+                    {item.rawCount > 0 ? `+${item.rawCount}` : item.rawCount}
+                  </div>
+                )}
               </div>
-              <div className="bar-label">{item.label}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     );
   };
 
-  // Enhanced Network Insights with Month-wise Growth
-  const networkInsights = useMemo(() => {
-    const allSkills = connections.flatMap(c => c.skills || []);
-    const allDepartments = connections.map(c => c.department).filter(Boolean);
-    const allCompanies = connections.map(c => c.company).filter(Boolean);
-    const allRoles = connections.map(c => c.role).filter(Boolean);
+  // 🔵 DATA FETCHING FUNCTIONS
+  const fetchConnectionHistory = async () => {
+    try {
+      const res = await axios.get(
+        `http://localhost:5000/api/network/history?timeframe=${graphTimeframe}`, 
+        authHeader
+      );
+      setConnectionHistory(res.data?.history || []);
+    } catch (err) {
+      console.error("Error fetching connection history:", err);
+      // Fallback: Generate initial history from current connections
+      const fallbackHistory = connections.map(conn => ({
+        type: 'connected',
+        date: conn.connectedAt || conn.createdAt || new Date().toISOString(),
+        userId: conn._id,
+        userName: conn.name
+      }));
+      setConnectionHistory(fallbackHistory);
+    }
+  };
+
+  const fetchUsersWithConnections = async () => {
+    try {
+      const res = await axios.get("http://localhost:5000/api/users/with-connections", authHeader);
+      setUsersWithConnections(res.data || []);
+    } catch (err) {
+      console.error("Error fetching users with connections:", err);
+      setUsersWithConnections(users);
+    }
+  };
+
+  // 🔵 DATA PROCESSING FUNCTIONS - ENHANCED FOR REAL-TIME TRACKING
+  const processHistoricalData = (history) => {
+    if (!history || history.length === 0) return [];
     
+    // Sort events by date
+    const sortedEvents = [...history].sort((a, b) => 
+      new Date(a.date) - new Date(b.date)
+    );
+    
+    let timeframeDays;
+    switch(graphTimeframe) {
+      case "7days":
+        timeframeDays = 7;
+        break;
+      case "30days":
+        timeframeDays = 30;
+        break;
+      case "90days":
+        timeframeDays = 90;
+        break;
+      default:
+        timeframeDays = sortedEvents.length > 0 ? 
+          Math.ceil((new Date() - new Date(sortedEvents[0].date)) / (1000 * 60 * 60 * 24)) + 1 : 
+          365;
+    }
+    
+    // Generate date array based on timeframe
+    const dateArray = [];
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeframeDays + 1);
+    
+    // Initialize daily data
+    const dailyData = {};
+    let currentDate = new Date(startDate);
+    
+    while (currentDate <= endDate) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const label = currentDate.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        ...(timeframeDays > 30 ? { year: '2-digit' } : {})
+      });
+      
+      dailyData[dateStr] = {
+        label: label,
+        date: new Date(currentDate),
+        connections: new Set(),
+        netChange: 0,
+        rawCount: 0
+      };
+      
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Process each event
+    sortedEvents.forEach(event => {
+      const eventDate = new Date(event.date);
+      const dateStr = eventDate.toISOString().split('T')[0];
+      
+      if (dailyData[dateStr]) {
+        if (event.type === 'connected') {
+          if (!dailyData[dateStr].connections.has(event.userId)) {
+            dailyData[dateStr].connections.add(event.userId);
+            dailyData[dateStr].netChange += 1;
+            dailyData[dateStr].rawCount += 1;
+          }
+        } else if (event.type === 'disconnected') {
+          if (dailyData[dateStr].connections.has(event.userId)) {
+            dailyData[dateStr].connections.delete(event.userId);
+          }
+          dailyData[dateStr].netChange -= 1;
+          dailyData[dateStr].rawCount -= 1;
+        }
+      }
+    });
+    
+    // Convert to array and calculate cumulative totals
+    const dataArray = Object.values(dailyData).sort((a, b) => a.date - b.date);
+    
+    let cumulativeTotal = 0;
+    const result = dataArray.map(item => {
+      cumulativeTotal += item.netChange;
+      return {
+        label: item.label,
+        value: Math.max(0, cumulativeTotal),
+        rawCount: item.rawCount,
+        date: item.date,
+        events: Array.from(item.connections)
+      };
+    });
+    
+    return result;
+  };
+
+  const calculateMutualConnections = (userData) => {
+    if (!userData || !userData.connections || !connections.length) return [];
+    
+    const currentUserConnections = connections.map(c => c._id);
+    const otherUserConnections = userData.connections || [];
+    
+    return otherUserConnections.filter(connId => 
+      currentUserConnections.includes(connId)
+    );
+  };
+
+  // 🔵 NETWORK INSIGHTS (REAL-TIME)
+
+  const networkInsights = useMemo(() => {
+    // Process historical data
+    const historicalData = processHistoricalData(connectionHistory);
+    
+    // Calculate statistics
+    const totalConnections = connections.length;
+    const pendingRequests = incoming.length;
+    const sentRequests = outgoing.length;
+    
+    // Growth metrics
+    let dailyChange = 0;
+    let weeklyChange = 0;
+    let monthlyChange = 0;
+    let growthRate = 0;
+    let currentStreak = 0;
+    
+    if (historicalData.length > 0) {
+      const today = historicalData[historicalData.length - 1];
+      dailyChange = today.rawCount || 0;
+      
+      // Weekly change (last 7 days)
+      if (historicalData.length >= 7) {
+        weeklyChange = historicalData.slice(-7).reduce((sum, day) => sum + day.rawCount, 0);
+      }
+      
+      // Monthly change (last 30 days)
+      if (historicalData.length >= 30) {
+        monthlyChange = historicalData.slice(-30).reduce((sum, day) => sum + day.rawCount, 0);
+      }
+      
+      // Growth streak
+      let streak = 0;
+      for (let i = 1; i < historicalData.length; i++) {
+        if (historicalData[i].value > historicalData[i-1].value) {
+          streak++;
+        } else if (historicalData[i].value < historicalData[i-1].value) {
+          streak = 0;
+        }
+      }
+      currentStreak = streak;
+    }
+    
+    // Calculate max value for graph
+    const maxHistoricalValue = Math.max(
+      ...historicalData.map(d => d.value),
+      totalConnections,
+      1
+    );
+    
+    // Additional insights
+    const alumniConnections = connections.filter(c => {
+      const roleLower = c.role?.toLowerCase() || '';
+      const companyLower = c.company?.toLowerCase() || '';
+      return roleLower.includes('alumni') || 
+             roleLower.includes('graduate') ||
+             companyLower.includes('alumni');
+    });
+    
+    const usersWithMutualConnections = usersWithConnections
+      .filter(u => u._id !== user?._id)
+      .map(u => ({
+        ...u,
+        mutualCount: calculateMutualConnections(u).length
+      }))
+      .filter(u => u.mutualCount > 0);
+    
+    const allSkills = connections.flatMap(c => c.skills || []);
     const skillFrequency = allSkills.reduce((acc, skill) => {
       acc[skill] = (acc[skill] || 0) + 1;
       return acc;
     }, {});
     
+    const topSkillsWithCount = Object.entries(skillFrequency)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([skill, count]) => ({ skill, count }));
+    
+    const allDepartments = connections.map(c => c.department).filter(Boolean);
     const deptFrequency = allDepartments.reduce((acc, dept) => {
       acc[dept] = (acc[dept] || 0) + 1;
       return acc;
     }, {});
     
-    const companyFrequency = allCompanies.reduce((acc, company) => {
-      acc[company] = (acc[company] || 0) + 1;
-      return acc;
-    }, {});
-    
-    const roleFrequency = allRoles.reduce((acc, role) => {
-      acc[role] = (acc[role] || 0) + 1;
-      return acc;
-    }, {});
-    
-    // Enhanced data with counts for visualizations
-    const topSkillsWithCount = Object.entries(skillFrequency)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([skill, count]) => ({ skill, count }));
-    
     const topDepartmentsWithCount = Object.entries(deptFrequency)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
+      .slice(0, 5)
       .map(([dept, count]) => ({ dept, count }));
-    
-    const topCompaniesWithCount = Object.entries(companyFrequency)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([company, count]) => ({ company, count }));
-    
-    // Calculate network growth trend with realistic month-wise data
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentDate = new Date();
-    const currentMonth = currentDate.getMonth();
-    const currentYear = currentDate.getFullYear();
-    
-    // Simulate network growth over the last 6 months with realistic progression
-    const networkGrowthTrend = [];
-    const monthlyGrowthData = [];
-    
-    // Generate data for last 6 months including current
-    for (let i = 5; i >= 0; i--) {
-      const monthIndex = (currentMonth - i + 12) % 12;
-      const year = monthIndex > currentMonth ? currentYear - 1 : currentYear;
-      const month = months[monthIndex];
-      
-      // Calculate connections for this month
-      let connectionsThisMonth;
-      if (i === 0) {
-        // Current month: actual connections
-        connectionsThisMonth = connections.length;
-      } else {
-        // Simulate growth with random variation
-        const baseConnections = Math.max(1, Math.floor(connections.length * (0.2 + (0.8 * i) / 6)));
-        const variation = Math.floor(Math.random() * 10) - 2; // -2 to +7
-        connectionsThisMonth = Math.max(1, baseConnections + variation);
-      }
-      
-      // Add to trend for line chart
-      networkGrowthTrend.push({
-        month,
-        value: connectionsThisMonth,
-        date: new Date(year, monthIndex, 1)
-      });
-      
-      // Add to bar chart data
-      monthlyGrowthData.push({
-        label: month,
-        value: connectionsThisMonth
-      });
-    }
-    
-    // Calculate growth statistics
-    const totalConnections = connections.length;
-    const pendingRequests = incoming.length;
-    const sentRequests = outgoing.length;
-    
-    // Calculate monthly change
-    let monthlyChange = 0;
-    let growthRate = 0;
-    if (networkGrowthTrend.length > 1) {
-      const currentMonthData = networkGrowthTrend[networkGrowthTrend.length - 1];
-      const previousMonthData = networkGrowthTrend[networkGrowthTrend.length - 2];
-      monthlyChange = currentMonthData.value - previousMonthData.value;
-      if (previousMonthData.value > 0) {
-        growthRate = ((monthlyChange / previousMonthData.value) * 100).toFixed(1);
-      }
-    }
-    
-    // Calculate peak connections
-    const peakConnections = Math.max(...networkGrowthTrend.map(d => d.value));
-    
-    // Calculate alumni specifically
-    const alumniConnections = connections.filter(c => 
-      c.role?.toLowerCase().includes('alumni') || 
-      c.role?.toLowerCase().includes('graduate') ||
-      c.role?.toLowerCase().includes('former')
-    );
-    
-    const allAlumniUsers = users.filter(u => 
-      u.role?.toLowerCase().includes('alumni') || 
-      u.role?.toLowerCase().includes('graduate') ||
-      u.role?.toLowerCase().includes('former')
-    );
-    
-    // Find alumni companies
-    const alumniCompanies = alumniConnections.reduce((acc, c) => {
-      if (c.company) {
-        acc[c.company] = (acc[c.company] || 0) + 1;
-      }
-      return acc;
-    }, {});
-    
-    const topAlumniCompanies = Object.entries(alumniCompanies)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([company, count]) => ({ company, count }));
-    
-    // Potential matches calculation
-    const potentialMatches = users.filter(u => 
-      !connections.some(c => c._id === u._id) &&
-      !outgoing.some(o => o._id === u._id) &&
-      !incoming.some(i => i._id === u._id) &&
-      u.department === user?.department
-    );
-    
-    // Skill diversity score
-    const uniqueSkillCount = Object.keys(skillFrequency).length;
-    const skillDiversityScore = Math.min(10, Math.floor(uniqueSkillCount / 2));
     
     return {
       networkGrowth: {
         total: totalConnections,
         pending: pendingRequests,
         sent: sentRequests,
+        dailyChange: dailyChange,
+        weeklyChange: weeklyChange,
         monthlyChange: monthlyChange,
         growthRate: growthRate,
-        trend: networkGrowthTrend,
-        monthlyData: monthlyGrowthData,
-        peakConnections: peakConnections,
-        maxMonthlyValue: Math.max(...monthlyGrowthData.map(d => d.value), 1)
+        historicalData: historicalData,
+        maxHistoricalValue: maxHistoricalValue,
+        hasRealData: connectionHistory.length > 0,
+        currentStreak: currentStreak,
+        timeframe: graphTimeframe
       },
-      commonFields: {
-        departments: topDepartmentsWithCount,
-        topDepartment: topDepartmentsWithCount[0]?.dept || "No common field",
-        totalDepartments: Object.keys(deptFrequency).length,
-        departmentDistribution: topDepartmentsWithCount.slice(0, 8)
-      },
-      topSkills: {
-        skills: topSkillsWithCount,
-        topSkill: topSkillsWithCount[0]?.skill || "No shared skills",
-        totalSharedSkills: allSkills.length,
-        uniqueSkills: uniqueSkillCount,
-        diversityScore: skillDiversityScore,
-        skillDistribution: topSkillsWithCount.slice(0, 8)
+      mutualConnections: {
+        total: usersWithMutualConnections.length,
+        users: usersWithMutualConnections
       },
       alumniNetwork: {
         count: alumniConnections.length,
-        totalAlumni: allAlumniUsers.length,
-        connections: alumniConnections,
-        allAlumni: allAlumniUsers,
-        percentage: totalConnections > 0 ? Math.round((alumniConnections.length / totalConnections) * 100) : 0,
-        topAlumniCompanies: topAlumniCompanies,
-        alumniByCompany: Object.entries(alumniCompanies),
-        alumniByRole: allAlumniUsers.reduce((acc, alumni) => {
-          const role = alumni.role || 'Unknown';
-          acc[role] = (acc[role] || 0) + 1;
-          return acc;
-        }, {})
+        percentage: totalConnections > 0 ? Math.round((alumniConnections.length / totalConnections) * 100) : 0
       },
-      topCompanies: topCompaniesWithCount,
-      connectionsInYourField: allDepartments.filter(dept => dept === user?.department).length,
-      potentialMatches: potentialMatches.length,
-      sharedSkills: Object.keys(skillFrequency)
+      topSkills: {
+        skills: topSkillsWithCount,
+        topSkill: topSkillsWithCount[0]?.skill || "No shared skills"
+      },
+      commonFields: {
+        departments: topDepartmentsWithCount,
+        topDepartment: topDepartmentsWithCount[0]?.dept || "No common field"
+      },
+      historicalStats: {
+        totalEvents: connectionHistory.length,
+        connectionEvents: connectionHistory.filter(e => e.type === 'connected').length,
+        disconnectionEvents: connectionHistory.filter(e => e.type === 'disconnected').length
+      }
     };
-  }, [connections, users, user?.department, outgoing, incoming]);
+  }, [connections, incoming, outgoing, connectionHistory, usersWithConnections, user, graphTimeframe]);
 
+  // 🔵 USE EFFECTS
   useEffect(() => {
     fetchUserProfile();
     fetchAllData();
@@ -264,7 +424,13 @@ function Network() {
   }, []);
 
   useEffect(() => {
+    fetchConnectionHistory();
+  }, [graphTimeframe]);
+
+  useEffect(() => {
+    // Filter users based on current state
     const availableUsers = users.filter(u => 
+      u._id !== user?._id &&
       !connections.some(c => c._id === u._id) && 
       !outgoing.some(o => o._id === u._id) && 
       !incoming.some(i => i._id === u._id)
@@ -276,19 +442,19 @@ function Network() {
       
       switch(quickActionFilter) {
         case 'alumni':
-          filtered = availableUsers.filter(u => 
-            u.role?.toLowerCase().includes('alumni') || 
-            u.role?.toLowerCase().includes('graduate') ||
-            u.role?.toLowerCase().includes('former')
-          );
-          targetTab = "people";
+          filtered = availableUsers.filter(u => {
+            const roleLower = u.role?.toLowerCase() || '';
+            const companyLower = u.company?.toLowerCase() || '';
+            return roleLower.includes('alumni') || 
+                   roleLower.includes('graduate') ||
+                   companyLower.includes('alumni');
+          });
           break;
           
         case 'same_department':
           filtered = availableUsers.filter(u => 
-            u.department === user?.department && u._id !== user?._id
+            u.department === user?.department
           );
-          targetTab = "people";
           break;
           
         case 'top_skill':
@@ -300,21 +466,26 @@ function Network() {
               )
             );
           }
-          targetTab = "people";
           break;
           
         case 'recent_connections':
-          filtered = connections.slice(0, 10);
+          filtered = [...connections].sort((a, b) => {
+            const dateA = new Date(a.connectedAt || a.createdAt || 0);
+            const dateB = new Date(b.connectedAt || b.createdAt || 0);
+            return dateB - dateA;
+          }).slice(0, 10);
           targetTab = "connections";
           break;
           
         case 'mutual_connections':
-          const yourConnectionIds = connections.map(c => c._id);
-          filtered = availableUsers.filter(u => {
-            const userConnections = u.connections || [];
-            return userConnections.some(connId => yourConnectionIds.includes(connId));
-          });
-          targetTab = "people";
+          filtered = networkInsights.mutualConnections.users
+            .filter(u => 
+              u._id !== user?._id &&
+              !connections.some(c => c._id === u._id) && 
+              !outgoing.some(o => o._id === u._id) && 
+              !incoming.some(i => i._id === u._id)
+            )
+            .sort((a, b) => b.mutualCount - a.mutualCount);
           break;
           
         case 'pending_actions':
@@ -335,8 +506,9 @@ function Network() {
     } else {
       setFilteredUsers(availableUsers);
     }
-  }, [users, connections, outgoing, incoming, quickActionFilter, user?.department, networkInsights]);
+  }, [users, connections, outgoing, incoming, quickActionFilter, user, networkInsights]);
 
+  // 🔵 API CALL FUNCTIONS
   const fetchUserProfile = async () => {
     try {
       const res = await axios.get("http://localhost:5000/api/auth/profile", authHeader);
@@ -358,76 +530,102 @@ function Network() {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        axios.get("http://localhost:5000/api/users", authHeader).then(res => setUsers(res.data || [])),
-        axios.get("http://localhost:5000/api/network/requests/received", authHeader).then(res => setIncoming(res.data?.requests || [])),
-        axios.get("http://localhost:5000/api/network/requests/sent", authHeader).then(res => setOutgoing(res.data?.requests || [])),
-        axios.get("http://localhost:5000/api/network/connections", authHeader).then(res => setConnections(res.data?.connections || []))
+      const [usersRes, incomingRes, outgoingRes, connectionsRes] = await Promise.all([
+        axios.get("http://localhost:5000/api/users", authHeader),
+        axios.get("http://localhost:5000/api/network/requests/received", authHeader),
+        axios.get("http://localhost:5000/api/network/requests/sent", authHeader),
+        axios.get("http://localhost:5000/api/network/connections", authHeader)
       ]);
+      
+      setUsers(usersRes.data || []);
+      setIncoming(incomingRes.data?.requests || []);
+      setOutgoing(outgoingRes.data?.requests || []);
+      setConnections(connectionsRes.data?.connections || []);
+      
+      fetchConnectionHistory();
+      fetchUsersWithConnections();
+      
     } catch (err) {
       console.error("Error fetching network data:", err);
+      setUsers([]);
+      setIncoming([]);
+      setOutgoing([]);
+      setConnections([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleNetworkAction = async (endpoint, id) => {
+  const handleNetworkAction = async (endpoint, id, userName = '', userData = null) => {
     try {
+      const isRemoval = endpoint === "remove";
+      const isConnection = endpoint === "accept" || endpoint === "request";
+      
       await axios.post(`http://localhost:5000/api/network/${endpoint}/${id}`, {}, authHeader);
+      
+      // Record history for real data tracking
+      const eventType = isRemoval ? 'disconnected' : 
+                      isConnection ? 'connected' : null;
+      
+      if (eventType) {
+        const historyEvent = {
+          type: eventType,
+          date: new Date().toISOString(),
+          userId: id,
+          userName: userName || 'Unknown',
+          userData: userData || null
+        };
+        
+        // Update local history immediately
+        setConnectionHistory(prev => [...prev, historyEvent]);
+        
+        // Save to backend
+        try {
+          await axios.post("http://localhost:5000/api/network/history/record", 
+            historyEvent, 
+            authHeader
+          );
+        } catch (err) {
+          console.error("Failed to record history:", err);
+        }
+      }
+      
+      // Refresh all data
       fetchAllData();
+      
     } catch (err) {
       alert(err.response?.data?.message || "Error processing request");
     }
   };
 
-  // Quick Actions Functions
-  const handleFindAlumni = () => {
-    setQuickActionFilter('alumni');
-    setSearchQuery("Alumni");
-  };
-
-  const handleSameDepartment = () => {
-    setQuickActionFilter('same_department');
-    setSearchQuery(`People in ${user?.department || "your department"}`);
-  };
-
-  const handleTopSkillSearch = () => {
-    setQuickActionFilter('top_skill');
-    const topSkill = networkInsights.topSkills.topSkill;
-    setSearchQuery(`People with ${topSkill} skill`);
-  };
-
-  const handleRecentConnections = () => {
-    setQuickActionFilter('recent_connections');
-    setSearchQuery("Recent connections");
-  };
-
-  const handleMutualConnections = () => {
-    setQuickActionFilter('mutual_connections');
-    setSearchQuery("Mutual connections");
-  };
-
-  const handlePendingActions = () => {
-    setQuickActionFilter('pending_actions');
-    setSearchQuery("Pending connection requests");
-  };
 
   const exportConnections = () => {
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "Name,Role,Department,Email,Company,Connected Date\n"
-      + connections.map(c => `"${c.name}","${c.role || ''}","${c.department || ''}","${c.email || ''}","${c.company || ''}","${new Date().toLocaleDateString()}"`).join("\n");
+    const csvHeaders = "Name,Role,Department,Email,Company,Skills,Connection Date,Connection Type\n";
+    
+    const csvRows = connectionHistory.map(event => {
+      const date = new Date(event.date);
+      const formattedDate = date.toLocaleDateString();
+      const formattedTime = date.toLocaleTimeString();
+      
+      return `"${event.userName || ''}","${event.userData?.role || ''}","${event.userData?.department || ''}","${event.userData?.email || ''}","${event.userData?.company || ''}","","${formattedDate} ${formattedTime}","${event.type}"`;
+    }).join("\n");
+    
+    const csvContent = "data:text/csv;charset=utf-8," + csvHeaders + csvRows;
     
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `my_connections_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `network_history_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     
-    alert(`${connections.length} connections exported successfully!`);
+    alert(`${connectionHistory.length} historical events exported successfully!`);
   };
 
+  // =========================
+  // 🔵 HELPER FUNCTIONS
+  // =========================
   const clearFilter = () => {
     setQuickActionFilter(null);
     setSearchQuery("");
@@ -439,10 +637,26 @@ function Network() {
       <div className="avatar-initial">{userObj?.name?.charAt(0).toUpperCase() || "U"}</div>
   );
 
-  const isOutgoing = (id) => outgoing.some(u => u._id === id);
-  const isIncoming = (id) => incoming.some(u => u._id === id);
-  const isConnected = (id) => connections.some(u => u._id === id);
+  const getConnectionDateDisplay = (connection) => {
+    const date = connection.connectedAt || connection.createdAt;
+    if (!date) return null;
+    
+    const connectionDate = new Date(date);
+    const now = new Date();
+    const diffTime = Math.abs(now - connectionDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return `${Math.floor(diffDays / 30)} months ago`;
+  };
 
+  const handleTimeframeChange = (timeframe) => {
+    setGraphTimeframe(timeframe);
+  };
+  // 🔵 RENDER FUNCTIONS
   if (loading && !user) {
     return (
       <div className="network-loading">
@@ -461,142 +675,175 @@ function Network() {
       case "sent":
         return outgoing;
       case "connections":
-        return quickActionFilter === 'recent_connections' ? 
-          connections.slice(0, 10) : connections;
+        if (quickActionFilter === 'recent_connections') {
+          return [...connections].sort((a, b) => {
+            const dateA = new Date(a.connectedAt || a.createdAt || 0);
+            const dateB = new Date(b.connectedAt || b.createdAt || 0);
+            return dateB - dateA;
+          }).slice(0, 10);
+        }
+        return connections;
       default:
         return [];
     }
   };
 
   const activeContent = getActiveContent();
-
+  
+  // 🔵 MAIN RENDER
   return (
     <div className={`network-page ${darkMode ? 'dark-mode' : ''}`}>
-      {/* Network Growth Modal */}
+      
+      {/* 📊 NETWORK GROWTH MODAL */}
+      
       {showNetworkGrowthModal && (
         <div className="modal-overlay" onClick={() => setShowNetworkGrowthModal(false)}>
           <div className="modal-content analytics-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>📊 Network Growth Analytics</h3>
+              <div className="modal-title-section">
+                <h3>📊 Network Growth Analytics</h3>
+                <div className="data-source-indicator">
+                  <span className={`data-source real`}>
+                    📈 Real-Time Historical Tracking
+                  </span>
+                </div>
+              </div>
               <button className="modal-close" onClick={() => setShowNetworkGrowthModal(false)}>×</button>
             </div>
+            
             <div className="modal-body">
               <div className="analytics-summary">
-                {/* Key Metrics Grid */}
+                {/* Timeframe Selector */}
+                <div className="timeframe-selector">
+                  <h4>View Timeframe:</h4>
+                  <div className="timeframe-buttons">
+                    {[
+                      { key: "7days", label: "7 Days" },
+                      { key: "30days", label: "30 Days" },
+                      { key: "90days", label: "90 Days" },
+                      { key: "all", label: "All Time" }
+                    ].map(({ key, label }) => (
+                      <button
+                        key={key}
+                        className={`timeframe-btn ${graphTimeframe === key ? 'active' : ''}`}
+                        onClick={() => handleTimeframeChange(key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Key Metrics */}
                 <div className="summary-stats">
                   <div className="stat-item">
                     <div className="stat-value">{networkInsights.networkGrowth.total}</div>
                     <div className="stat-label">Total Connections</div>
+                    <div className="stat-note">Current count</div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-value">{networkInsights.networkGrowth.pending}</div>
-                    <div className="stat-label">Pending</div>
+                    <div className="stat-value">{networkInsights.networkGrowth.dailyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.dailyChange}</div>
+                    <div className="stat-label">Today</div>
+                    <div className="stat-note">Net change</div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-value">{networkInsights.networkGrowth.sent}</div>
-                    <div className="stat-label">Sent</div>
+                    <div className="stat-value">{networkInsights.networkGrowth.weeklyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.weeklyChange}</div>
+                    <div className="stat-label">This Week</div>
+                    <div className="stat-note">Weekly change</div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-value">
-                      {networkInsights.networkGrowth.monthlyChange > 0 ? '+' : ''}
-                      {networkInsights.networkGrowth.monthlyChange}
-                    </div>
+                    <div className="stat-value">{networkInsights.networkGrowth.monthlyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.monthlyChange}</div>
                     <div className="stat-label">This Month</div>
+                    <div className="stat-note">Monthly change</div>
                   </div>
                 </div>
                 
-                {/* Growth Chart Section */}
+                {/* Historical Growth Chart */}
                 <div className="growth-chart">
-                  <h4>📈 Network Growth Trend (Last 6 Months)</h4>
+                  <h4>📈 Network Growth Timeline</h4>
+                  <div className="data-real-notice">
+                    <span className="real-icon">✅</span>
+                    <span>Tracking {networkInsights.historicalStats.totalEvents} connection events in real-time</span>
+                  </div>
                   <div className="chart-container-large">
-                    <BarChart 
-                      data={networkInsights.networkGrowth.monthlyData}
-                      maxValue={networkInsights.networkGrowth.maxMonthlyValue}
-                      color="linear-gradient(to top, #3498db, #2ecc71)"
-                      height={250}
+                    <LineChart 
+                      data={networkInsights.networkGrowth.historicalData}
+                      maxValue={networkInsights.networkGrowth.maxHistoricalValue}
+                      color="linear-gradient(to right, #3498db, #2ecc71)"
+                      height={280}
                     />
                   </div>
                   <div className="chart-legend">
                     <div className="legend-item">
-                      <div className="legend-color" style={{background: '#3498db'}}></div>
-                      <span>Monthly Network Growth</span>
+                      <div className="legend-color" style={{ backgroundColor: '#3498db' }}></div>
+                      <span>Network Size</span>
+                    </div>
+                    <div className="legend-item">
+                      <div className="legend-color" style={{ backgroundColor: '#2ecc71' }}></div>
+                      <span>Growth Trend</span>
                     </div>
                   </div>
                 </div>
                 
-                {/* Growth Stats */}
-                <div className="growth-stats">
-                  <div className="growth-stat">
-                    <div className="stat-icon">📈</div>
-                    <div>
-                      <div className="stat-title">Monthly Growth Rate</div>
-                      <div className="stat-value-large">{networkInsights.networkGrowth.growthRate}%</div>
+                {/* Event History */}
+                {networkInsights.historicalStats.totalEvents > 0 && (
+                  <div className="event-history">
+                    <h4>📝 Recent Network Activity</h4>
+                    <div className="events-list-container">
+                      {[...connectionHistory]
+                        .sort((a, b) => new Date(b.date) - new Date(a.date))
+                        .slice(0, 8)
+                        .map((event, index) => (
+                          <div key={index} className={`event-item ${event.type}`}>
+                            <div className="event-icon">
+                              {event.type === 'connected' ? '🔗' : '❌'}
+                            </div>
+                            <div className="event-content">
+                              <div className="event-description">
+                                <strong>{event.userName}</strong> was {event.type === 'connected' ? 'added to' : 'removed from'} your network
+                              </div>
+                              <div className="event-date">
+                                {new Date(event.date).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
+                            <div className="event-action">
+                              {event.type === 'connected' ? '+1' : '-1'}
+                            </div>
+                          </div>
+                        ))}
                     </div>
                   </div>
-                  <div className="growth-stat">
-                    <div className="stat-icon">👥</div>
-                    <div>
-                      <div className="stat-title">Peak Connections</div>
-                      <div className="stat-value-large">{networkInsights.networkGrowth.peakConnections}</div>
-                    </div>
-                  </div>
-                  <div className="growth-stat">
-                    <div className="stat-icon">🎯</div>
-                    <div>
-                      <div className="stat-title">Growth Trend</div>
-                      <div className="stat-value-large">
-                        {networkInsights.networkGrowth.monthlyChange > 0 ? '↗ Increasing' : 
-                         networkInsights.networkGrowth.monthlyChange < 0 ? '↘ Decreasing' : '➡ Stable'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="growth-stat">
-                    <div className="stat-icon">📅</div>
-                    <div>
-                      <div className="stat-title">Active Period</div>
-                      <div className="stat-value-large">6 Months</div>
-                    </div>
-                  </div>
-                </div>
+                )}
                 
-                {/* Month-wise Growth Table */}
-                <div className="monthly-growth-table">
-                  <h4>📅 Month-wise Growth Breakdown</h4>
-                  <table className="growth-table">
-                    <thead>
-                      <tr>
-                        <th>Month</th>
-                        <th>Connections</th>
-                        <th>Growth</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {networkInsights.networkGrowth.monthlyData.map((monthData, index, array) => {
-                        const prevValue = index > 0 ? array[index - 1].value : monthData.value;
-                        const growth = monthData.value - prevValue;
-                        const growthPercent = prevValue > 0 ? ((growth / prevValue) * 100).toFixed(1) : 0;
-                        
-                        return (
-                          <tr key={index}>
-                            <td className="month-name">{monthData.label}</td>
-                            <td className="month-connections">{monthData.value}</td>
-                            <td className={`month-growth ${growth > 0 ? 'positive' : growth < 0 ? 'negative' : 'neutral'}`}>
-                              {growth > 0 ? '+' : ''}{growth} ({growthPercent}%)
-                            </td>
-                            <td className="month-status">
-                              <span className={`status-badge ${growth > 0 ? 'good' : growth < 0 ? 'bad' : 'neutral'}`}>
-                                {growth > 0 ? 'Growing' : growth < 0 ? 'Declining' : 'Stable'}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                {/* Statistics Summary */}
+                <div className="stats-summary">
+                  <div className="stat-card-mini">
+                    <div className="stat-mini-value">{networkInsights.historicalStats.connectionEvents}</div>
+                    <div className="stat-mini-label">Connections Made</div>
+                  </div>
+                  <div className="stat-card-mini">
+                    <div className="stat-mini-value">{networkInsights.historicalStats.disconnectionEvents}</div>
+                    <div className="stat-mini-label">Connections Removed</div>
+                  </div>
+                  <div className="stat-card-mini">
+                    <div className="stat-mini-value">{networkInsights.networkGrowth.currentStreak}</div>
+                    <div className="stat-mini-label">Growth Streak</div>
+                  </div>
+                  <div className="stat-card-mini">
+                    <div className="stat-mini-value">
+                      {networkInsights.historicalStats.connectionEvents - networkInsights.historicalStats.disconnectionEvents}
+                    </div>
+                    <div className="stat-mini-label">Net Growth</div>
+                  </div>
                 </div>
               </div>
             </div>
+            
             <div className="modal-actions">
               <button className="modal-btn" onClick={() => {
                 setShowNetworkGrowthModal(false);
@@ -607,12 +854,9 @@ function Network() {
                 <span className="modal-icon">🔄</span>
                 View Recent Connections
               </button>
-              <button className="modal-btn" onClick={() => {
-                exportConnections();
-                setShowNetworkGrowthModal(false);
-              }}>
+              <button className="modal-btn" onClick={exportConnections}>
                 <span className="modal-icon">📥</span>
-                Export Data
+                Export Complete History
               </button>
               <button className="modal-btn cancel" onClick={() => setShowNetworkGrowthModal(false)}>
                 Close
@@ -622,7 +866,7 @@ function Network() {
         </div>
       )}
 
-      {/* Common Fields Modal */}
+      {/* 🔵 COMMON FIELDS MODAL */}
       {showCommonFieldsModal && (
         <div className="modal-overlay" onClick={() => setShowCommonFieldsModal(false)}>
           <div className="modal-content analytics-modal" onClick={e => e.stopPropagation()}>
@@ -634,31 +878,12 @@ function Network() {
               <div className="analytics-summary">
                 <div className="summary-stats">
                   <div className="stat-item">
-                    <div className="stat-value">{networkInsights.commonFields.totalDepartments}</div>
-                    <div className="stat-label">Unique Fields</div>
-                  </div>
-                  <div className="stat-item">
                     <div className="stat-value">{networkInsights.commonFields.departments.length}</div>
                     <div className="stat-label">Common Fields</div>
                   </div>
                   <div className="stat-item">
                     <div className="stat-value">{networkInsights.commonFields.departments[0]?.count || 0}</div>
                     <div className="stat-label">In {networkInsights.commonFields.topDepartment}</div>
-                  </div>
-                </div>
-                
-                <div className="fields-chart">
-                  <h4>Field Distribution</h4>
-                  <div className="distribution-chart">
-                    <BarChart 
-                      data={networkInsights.commonFields.departmentDistribution.map(field => ({
-                        label: field.dept.length > 8 ? field.dept.substring(0, 8) + '...' : field.dept,
-                        value: field.count
-                      }))}
-                      maxValue={Math.max(...networkInsights.commonFields.departmentDistribution.map(f => f.count), 1)}
-                      color="linear-gradient(to top, #8b5cf6, #a78bfa)"
-                      height={180}
-                    />
                   </div>
                 </div>
                 
@@ -673,10 +898,9 @@ function Network() {
                         <div 
                           className="field-bar-fill" 
                           style={{ 
-                            width: `${(field.count / Math.max(...networkInsights.commonFields.departments.map(f => f.count), 1)) * 100}%`,
-                            background: index < 3 ? 'linear-gradient(to right, #4f46e5, #8b5cf6)' : 'linear-gradient(to right, #a78bfa, #c4b5fd)'
+                            width: `${(field.count / Math.max(...networkInsights.commonFields.departments.map(f => f.count))) * 100}%` 
                           }}
-                        />
+                        ></div>
                       </div>
                     </div>
                   ))}
@@ -703,7 +927,7 @@ function Network() {
         </div>
       )}
 
-      {/* Top Skills Modal */}
+      {/* 🔵 TOP SKILLS MODAL */}
       {showTopSkillsModal && (
         <div className="modal-overlay" onClick={() => setShowTopSkillsModal(false)}>
           <div className="modal-content analytics-modal" onClick={e => e.stopPropagation()}>
@@ -715,31 +939,12 @@ function Network() {
               <div className="analytics-summary">
                 <div className="summary-stats">
                   <div className="stat-item">
-                    <div className="stat-value">{networkInsights.topSkills.totalSharedSkills}</div>
-                    <div className="stat-label">Total Skills Shared</div>
+                    <div className="stat-value">{networkInsights.topSkills.skills.length}</div>
+                    <div className="stat-label">Shared Skills</div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-value">{networkInsights.topSkills.uniqueSkills}</div>
-                    <div className="stat-label">Unique Skills</div>
-                  </div>
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.topSkills.diversityScore}/10</div>
-                    <div className="stat-label">Diversity Score</div>
-                  </div>
-                </div>
-                
-                <div className="skills-chart">
-                  <h4>Top Skills Distribution</h4>
-                  <div className="distribution-chart">
-                    <BarChart 
-                      data={networkInsights.topSkills.skillDistribution.map(skill => ({
-                        label: skill.skill.length > 10 ? skill.skill.substring(0, 10) + '...' : skill.skill,
-                        value: skill.count
-                      }))}
-                      maxValue={Math.max(...networkInsights.topSkills.skillDistribution.map(s => s.count), 1)}
-                      color="linear-gradient(to top, #10b981, #34d399)"
-                      height={180}
-                    />
+                    <div className="stat-value">{networkInsights.topSkills.skills[0]?.count || 0}</div>
+                    <div className="stat-label">Know {networkInsights.topSkills.topSkill}</div>
                   </div>
                 </div>
                 
@@ -750,33 +955,16 @@ function Network() {
                       <div className="skill-rank">{index + 1}</div>
                       <div className="skill-name">{skill.skill}</div>
                       <div className="skill-count">{skill.count} connections</div>
-                      <div className="skill-percentage">
-                        {((skill.count / Math.max(...networkInsights.topSkills.skills.map(s => s.count), 1)) * 100).toFixed(1)}%
+                      <div className="skill-bar">
+                        <div 
+                          className="skill-bar-fill" 
+                          style={{ 
+                            width: `${(skill.count / Math.max(...networkInsights.topSkills.skills.map(s => s.count))) * 100}%` 
+                          }}
+                        ></div>
                       </div>
                     </div>
                   ))}
-                </div>
-                
-                <div className="diversity-score">
-                  <h4>Skill Diversity</h4>
-                  <div className="score-visual">
-                    {[...Array(10)].map((_, i) => (
-                      <div 
-                        key={i}
-                        className={`score-block ${i < networkInsights.topSkills.diversityScore ? 'active' : ''}`}
-                        style={{ 
-                          background: i < networkInsights.topSkills.diversityScore ? 
-                            (i < 3 ? 'linear-gradient(to right, #ef4444, #f87171)' : 
-                             i < 7 ? 'linear-gradient(to right, #f59e0b, #fbbf24)' : 
-                             'linear-gradient(to right, #10b981, #34d399)') : 'var(--border-color)'
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div className="score-label">
-                    {networkInsights.topSkills.diversityScore < 4 ? 'Low Diversity' : 
-                     networkInsights.topSkills.diversityScore < 7 ? 'Moderate Diversity' : 'High Diversity'}
-                  </div>
                 </div>
               </div>
             </div>
@@ -799,8 +987,7 @@ function Network() {
           </div>
         </div>
       )}
-
-      {/* Alumni Network Modal */}
+      {/* 🔵 ALUMNI NETWORK MODAL */}
       {showAlumniNetworkModal && (
         <div className="modal-overlay" onClick={() => setShowAlumniNetworkModal(false)}>
           <div className="modal-content analytics-modal" onClick={e => e.stopPropagation()}>
@@ -816,85 +1003,34 @@ function Network() {
                     <div className="stat-label">Alumni in Network</div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-value">{networkInsights.alumniNetwork.totalAlumni}</div>
-                    <div className="stat-label">Total Alumni</div>
-                  </div>
-                  <div className="stat-item">
                     <div className="stat-value">{networkInsights.alumniNetwork.percentage}%</div>
                     <div className="stat-label">of Network</div>
                   </div>
                 </div>
                 
                 <div className="alumni-visual">
-                  <h4>Alumni Distribution</h4>
-                  <div className="alumni-stats-grid">
-                    <div className="alumni-stat">
-                      <div className="alumni-percentage-circle">
-                        <svg width="100" height="100" viewBox="0 0 36 36">
-                          <path
-                            d="M18 2.0845
-                              a 15.9155 15.9155 0 0 1 0 31.831
-                              a 15.9155 15.9155 0 0 1 0 -31.831"
-                            fill="none"
-                            stroke="#e2e8f0"
-                            strokeWidth="3"
-                          />
-                          <path
-                            d="M18 2.0845
-                              a 15.9155 15.9155 0 0 1 0 31.831
-                              a 15.9155 15.9155 0 0 1 0 -31.831"
-                            fill="none"
-                            stroke="#10b981"
-                            strokeWidth="3"
-                            strokeDasharray={`${networkInsights.alumniNetwork.percentage}, 100`}
-                          />
-                        </svg>
-                        <div className="percentage-text">{networkInsights.alumniNetwork.percentage}%</div>
-                      </div>
-                      <div className="alumni-label">Alumni in Network</div>
-                    </div>
-                    
-                    <div className="alumni-companies">
-                      <h5>Top Alumni Companies</h5>
-                      {networkInsights.alumniNetwork.topAlumniCompanies.map((company, index) => (
-                        <div key={index} className="company-item">
-                          <div className="company-name">{company.company}</div>
-                          <div className="company-count">{company.count} alumni</div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="alumni-percentage-circle">
+                    <svg width="100" height="100" viewBox="0 0 36 36">
+                      <path
+                        d="M18 2.0845
+                          a 15.9155 15.9155 0 0 1 0 31.831
+                          a 15.9155 15.9155 0 0 1 0 -31.831"
+                        fill="none"
+                        stroke="#e2e8f0"
+                        strokeWidth="3"
+                      />
+                      <path
+                        d="M18 2.0845
+                          a 15.9155 15.9155 0 0 1 0 31.831
+                          a 15.9155 15.9155 0 0 1 0 -31.831"
+                        fill="none"
+                        stroke="#10b981"
+                        strokeWidth="3"
+                        strokeDasharray={`${networkInsights.alumniNetwork.percentage}, 100`}
+                      />
+                    </svg>
+                    <div className="percentage-text">{networkInsights.alumniNetwork.percentage}%</div>
                   </div>
-                </div>
-                
-                <div className="alumni-list">
-                  <h4>Alumni Connections</h4>
-                  <div className="alumni-grid">
-                    {networkInsights.alumniNetwork.connections.slice(0, 6).map((alumni, index) => (
-                      <div key={index} className="alumni-card">
-                        <img 
-                          src={alumni.profilePhoto || "https://via.placeholder.com/40"} 
-                          alt={alumni.name} 
-                          className="alumni-avatar" 
-                        />
-                        <div className="alumni-info">
-                          <div className="alumni-name">{alumni.name}</div>
-                          <div className="alumni-role">{alumni.role}</div>
-                          {alumni.company && <div className="alumni-company">{alumni.company}</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="alumni-actions">
-                  <button className="alumni-action-btn" onClick={() => {
-                    setShowAlumniNetworkModal(false);
-                    setQuickActionFilter('alumni');
-                    setSearchQuery("Alumni");
-                    setActiveTab("people");
-                  }}>
-                    Connect with Alumni
-                  </button>
                 </div>
               </div>
             </div>
@@ -906,7 +1042,7 @@ function Network() {
                 setActiveTab("people");
               }}>
                 <span className="modal-icon">🔗</span>
-                Connect with All Alumni
+                Connect with Alumni
               </button>
               <button className="modal-btn cancel" onClick={() => setShowAlumniNetworkModal(false)}>
                 Close
@@ -916,6 +1052,7 @@ function Network() {
         </div>
       )}
 
+      {/* 🔵 HEADER */}
       <header className="network-header">
         <div className="header-content">
           <div className="header-left">
@@ -963,14 +1100,28 @@ function Network() {
         </div>
       </header>
 
+      {/* 🔵 MAIN CONTENT */}
+      
       <main className="network-main">
         <div className="network-hero">
           <div className="hero-content">
             <h1>Your Network</h1>
             <p>Connect with professionals and grow your circle</p>
+            {networkInsights.networkGrowth.hasRealData && (
+              <div className="historical-data-badge">
+                <span className="badge-icon">📊</span>
+                <span className="badge-text">Real-time growth tracking active</span>
+              </div>
+            )}
           </div>
           <div className="hero-stats">
-            {[{value: connections.length, label: "Connections"}, {value: incoming.length, label: "Pending"}, {value: outgoing.length, label: "Sent"}].map((stat, i) => (
+            {[
+              {value: connections.length, label: "Connections"}, 
+              {value: incoming.length, label: "Pending"}, 
+              {value: outgoing.length, label: "Sent"},
+              {value: `${networkInsights.networkGrowth.dailyChange > 0 ? '+' : ''}${networkInsights.networkGrowth.dailyChange}`, label: "Today"},
+              {value: `${networkInsights.historicalStats.totalEvents}`, label: "Total Events"}
+            ].map((stat, i) => (
               <div key={i} className="stat-card">
                 <div className="stat-value">{stat.value}</div>
                 <div className="stat-label">{stat.label}</div>
@@ -1009,6 +1160,14 @@ function Network() {
               <div className="section-header">
                 <h2>{searchQuery || "Discover Professionals"}</h2>
                 <p>{searchQuery ? "Filtered results" : "Connect with people in your network"}</p>
+                {quickActionFilter === 'mutual_connections' && networkInsights.mutualConnections.total > 0 && (
+                  <div className="mutual-connections-info">
+                    <span className="info-icon">🤝</span>
+                    <span className="info-text">
+                      Showing {networkInsights.mutualConnections.total} users who share connections with you
+                    </span>
+                  </div>
+                )}
               </div>
               
               {activeContent.length === 0 ? (
@@ -1024,26 +1183,42 @@ function Network() {
                 </div>
               ) : (
                 <div className="users-grid">
-                  {activeContent.map(user => (
-                    <div key={user._id} className="user-card">
-                      <div className="user-card-header">
-                        <img src={user.profilePhoto || "https://via.placeholder.com/80"} alt={user.name} className="user-avatar" />
-                        <div className="user-info">
-                          <h3 className="user-name">{user.name}</h3>
-                          <p className="user-role">{user.role}</p>
-                          <p className="user-department">{user.department || "No department"}</p>
-                          {user.company && <p className="user-company">{user.company}</p>}
+                  {activeContent.map(user => {
+                    const mutualCount = quickActionFilter === 'mutual_connections' ? 
+                      calculateMutualConnections(user)?.length || 0 : 0;
+                    
+                    return (
+                      <div key={user._id} className="user-card">
+                        <div className="user-card-header">
+                          <img src={user.profilePhoto || "https://via.placeholder.com/80"} alt={user.name} className="user-avatar" />
+                          <div className="user-info">
+                            <h3 className="user-name">{user.name}</h3>
+                            <p className="user-role">{user.role}</p>
+                            <p className="user-department">{user.department || "No department"}</p>
+                            {user.company && <p className="user-company">{user.company}</p>}
+                          </div>
                         </div>
+                        {mutualCount > 0 && (
+                          <div className="mutual-connections-badge">
+                            <span className="mutual-icon">🤝</span>
+                            <span className="mutual-count">{mutualCount} mutual connection{mutualCount !== 1 ? 's' : ''}</span>
+                          </div>
+                        )}
+                        {user.bio && <p className="user-bio">{user.bio.length > 100 ? `${user.bio.substring(0, 100)}...` : user.bio}</p>}
+                        {user.skills?.length > 0 && (
+                          <div className="user-skills">
+                            {user.skills.slice(0, 3).map((skill, idx) => <span key={idx} className="skill-tag">{skill}</span>)}
+                          </div>
+                        )}
+                        <button 
+                          className="connect-btn" 
+                          onClick={() => handleNetworkAction("request", user._id, user.name, user)}
+                        >
+                          Connect
+                        </button>
                       </div>
-                      {user.bio && <p className="user-bio">{user.bio.length > 100 ? `${user.bio.substring(0, 100)}...` : user.bio}</p>}
-                      {user.skills?.length > 0 && (
-                        <div className="user-skills">
-                          {user.skills.slice(0, 3).map((skill, idx) => <span key={idx} className="skill-tag">{skill}</span>)}
-                        </div>
-                      )}
-                      <button className="connect-btn" onClick={() => handleNetworkAction("request", user._id)}>Connect</button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1073,8 +1248,18 @@ function Network() {
                         {request.bio && <p className="request-bio">{request.bio.length > 80 ? `${request.bio.substring(0, 80)}...` : request.bio}</p>}
                       </div>
                       <div className="request-actions">
-                        <button className="accept-btn" onClick={() => handleNetworkAction("accept", request._id)}>Accept</button>
-                        <button className="reject-btn" onClick={() => handleNetworkAction("reject", request._id)}>Reject</button>
+                        <button 
+                          className="accept-btn" 
+                          onClick={() => handleNetworkAction("accept", request._id, request.name, request)}
+                        >
+                          Accept
+                        </button>
+                        <button 
+                          className="reject-btn" 
+                          onClick={() => handleNetworkAction("reject", request._id, request.name)}
+                        >
+                          Reject
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -1109,7 +1294,12 @@ function Network() {
                           <span className="status-text">Pending</span>
                         </div>
                       </div>
-                      <button className="cancel-btn" onClick={() => handleNetworkAction("cancel", request._id)}>Cancel</button>
+                      <button 
+                        className="cancel-btn" 
+                        onClick={() => handleNetworkAction("cancel", request._id, request.name)}
+                      >
+                        Cancel
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1122,6 +1312,12 @@ function Network() {
               <div className="section-header">
                 <h2>{searchQuery || "Your Connections"}</h2>
                 <p>{searchQuery || "Manage your professional network"}</p>
+                {quickActionFilter === 'recent_connections' && (
+                  <div className="section-subtitle">
+                    <span className="subtitle-icon">🕒</span>
+                    Showing most recent connections first
+                  </div>
+                )}
               </div>
               
               {activeContent.length === 0 ? (
@@ -1129,74 +1325,104 @@ function Network() {
                   <div className="empty-icon">🤝</div>
                   <h3>No connections yet</h3>
                   <p>Start building your professional network</p>
+                  <button className="connect-btn" onClick={() => setActiveTab("people")} style={{marginTop: '20px'}}>
+                    Discover People to Connect With
+                  </button>
                 </div>
               ) : (
                 <div className="connections-grid">
-                  {activeContent.map(connection => (
-                    <div key={connection._id} className="connection-card">
-                      <img src={connection.profilePhoto || "https://via.placeholder.com/80"} alt={connection.name} className="connection-avatar" />
-                      <div className="connection-info">
-                        <h3 className="connection-name">{connection.name}</h3>
-                        <p className="connection-role">{connection.role}</p>
-                        <p className="connection-department">{connection.department || "No department"}</p>
-                        {connection.company && <p className="connection-company">{connection.company}</p>}
-                        {connection.skills?.length > 0 && (
-                          <div className="connection-skills">
-                            {connection.skills.slice(0, 3).map((skill, idx) => <span key={idx} className="skill-tag">{skill}</span>)}
-                          </div>
-                        )}
+                  {activeContent.map(connection => {
+                    const connectionDateDisplay = getConnectionDateDisplay(connection);
+                    const connectionDate = connection.connectedAt || connection.createdAt;
+                    
+                    return (
+                      <div key={connection._id} className="connection-card">
+                        <img src={connection.profilePhoto || "https://via.placeholder.com/80"} alt={connection.name} className="connection-avatar" />
+                        <div className="connection-info">
+                          <h3 className="connection-name">{connection.name}</h3>
+                          <p className="connection-role">{connection.role}</p>
+                          <p className="connection-department">{connection.department || "No department"}</p>
+                          {connection.company && <p className="connection-company">{connection.company}</p>}
+                          {connectionDateDisplay && (
+                            <div className="connection-date">
+                              <span className="date-icon">📅</span>
+                              <span className="date-text">{connectionDateDisplay}</span>
+                            </div>
+                          )}
+                          {connection.skills?.length > 0 && (
+                            <div className="connection-skills">
+                              {connection.skills.slice(0, 3).map((skill, idx) => <span key={idx} className="skill-tag">{skill}</span>)}
+                            </div>
+                          )}
+                        </div>
+                        <button 
+                          className="remove-btn" 
+                          onClick={() => {
+                            if (window.confirm(`Remove ${connection.name} from your connections?`)) {
+                              handleNetworkAction("remove", connection._id, connection.name, connection);
+                            }
+                          }}
+                        >
+                          Remove
+                        </button>
                       </div>
-                      <button className="remove-btn" onClick={() => {
-                        if (window.confirm(`Remove ${connection.name} from your connections?`)) {
-                          handleNetworkAction("remove", connection._id);
-                        }
-                      }}>Remove</button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Sidebar with Enhanced Quick Actions */}
+        {/* 🔵 SIDEBAR */}
         <aside className="network-sidebar">
           <div className="sidebar-section">
             <h3>Network Insights</h3>
             {[
-              ["📈", "Network Growth", `${networkInsights.networkGrowth.total} connections (+${networkInsights.networkGrowth.monthlyChange} this month)`, () => setShowNetworkGrowthModal(true)],
-              ["🎯", "Common Fields", networkInsights.commonFields.departments.slice(0, 2).map(f => f.dept).join(", "), () => setShowCommonFieldsModal(true)],
-              ["🔧", "Top Shared Skills", networkInsights.topSkills.skills.slice(0, 2).map(s => s.skill).join(", "), () => setShowTopSkillsModal(true)],
-              ["👥", "Alumni Network", `${networkInsights.alumniNetwork.count} alumni users`, () => setShowAlumniNetworkModal(true)]
+              ["📈", "Network Growth", `${networkInsights.networkGrowth.total} connections`, () => setShowNetworkGrowthModal(true)],
+              ["🎯", "Common Fields", networkInsights.commonFields.topDepartment, () => setShowCommonFieldsModal(true)],
+              ["🔧", "Top Shared Skills", networkInsights.topSkills.topSkill, () => setShowTopSkillsModal(true)],
             ].map(([icon, title, value, onClick], idx) => (
               <div key={idx} className="insight-item clickable" onClick={onClick}>
                 <span className="insight-icon">{icon}</span>
                 <div className="insight-content">
                   <strong>{title}</strong>
-                  <span>{value}</span>
+                  <span className="insight-value">{value}</span>
                 </div>
                 <span className="insight-arrow">→</span>
               </div>
             ))}
           </div>
 
+          
           <div className="sidebar-section">
-            <h3>Quick Actions</h3>
-            {[
-
-              ["🔄", "Recent Connections", handleRecentConnections, "Recently added connections"],
-              ["🤝", "Mutual Connections", handleMutualConnections, "People who share connections"],
-              ["📥", "Pending Actions", handlePendingActions, `${incoming.length} requests to review`],
-              
-            ].map(([icon, label, action, tooltip], idx) => (
-              <button key={idx} className="action-btn" onClick={action} title={tooltip}>
-                <span className="action-icon">{icon}</span>
-                <div className="action-content">
-                  <span className="action-label">{label}</span>
-                  <span className="action-tooltip">{tooltip}</span>
-                </div>
-              </button>
-            ))}
+            <h3>Growth Summary</h3>
+            <div className="growth-summary">
+              <div className="growth-item">
+                <span className="growth-label">Today's Change:</span>
+                <span className={`growth-value ${networkInsights.networkGrowth.dailyChange > 0 ? 'positive' : networkInsights.networkGrowth.dailyChange < 0 ? 'negative' : ''}`}>
+                  {networkInsights.networkGrowth.dailyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.dailyChange}
+                </span>
+              </div>
+              <div className="growth-item">
+                <span className="growth-label">Weekly Change:</span>
+                <span className={`growth-value ${networkInsights.networkGrowth.weeklyChange > 0 ? 'positive' : networkInsights.networkGrowth.weeklyChange < 0 ? 'negative' : ''}`}>
+                  {networkInsights.networkGrowth.weeklyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.weeklyChange}
+                </span>
+              </div>
+              <div className="growth-item">
+                <span className="growth-label">Growth Streak:</span>
+                <span className="growth-value streak">
+                  {networkInsights.networkGrowth.currentStreak} days
+                </span>
+              </div>
+              <div className="growth-item">
+                <span className="growth-label">Total Events:</span>
+                <span className="growth-value">
+                  {networkInsights.historicalStats.totalEvents}
+                </span>
+              </div>
+            </div>
           </div>
         </aside>
       </main>
@@ -1205,4 +1431,3 @@ function Network() {
 }
 
 export default Network;
-
