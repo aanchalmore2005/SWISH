@@ -1131,10 +1131,10 @@ function Explore() {
           {/* Tabs */}
           <div className="explore-tabs">
             {[
-              { id: 'trending', label: '🔥 Trending', icon: '🔥' },
-              { id: 'latest', label: '🕒 Latest', icon: '🕒' },
-              { id: 'category', label: '🏷️ Categories', icon: '🏷️' },
-              { id: 'media', label: '📷 Media', icon: '📷' },
+              { id: 'trending', label: 'Trending', icon: '🔥' },
+              { id: 'latest', label: 'Latest', icon: '🕒' },
+              { id: 'category', label: 'Categories', icon: '🏷️' },
+              { id: 'media', label: 'Media', icon: '📷' },
             ].map((tab) => (
               <button
                 key={tab.id}
