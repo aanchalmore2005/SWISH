@@ -20,34 +20,14 @@ const getUserAvatar = (userData) => {
     return userData?.name?.charAt(0).toUpperCase() || "U";
 };
 
-// Format time for posts
-const formatTimeAgo = (date) => {
-    const now = new Date();
-    const postDate = new Date(date);
-    const diffMs = now - postDate;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 60) {
-        return `${diffMins}m ago`;
-    } else if (diffHours < 24) {
-        return `${diffHours}h ago`;
-    } else if (diffDays < 7) {
-        return `${diffDays}d ago`;
-    } else {
-        return postDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-};
-
 // --- ExploreSearch Component ---
-const ExploreSearch = ({ onUserSelect, onSearch }) => {
+const ExploreSearch = ({ onUserSelect }) => {
     const [query, setQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [history, setHistory] = useState([]);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [searchType, setSearchType] = useState('users'); // 'users' or 'posts' or 'explore'
+    const [searchType, setSearchType] = useState('users'); // 'users' or 'posts'
     const [searchError, setSearchError] = useState('');
 
     const wrapperRef = useRef(null);
@@ -58,15 +38,7 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
     useEffect(() => {
         const storedHistory = localStorage.getItem(SEARCH_HISTORY_KEY);
         if (storedHistory) {
-            try {
-                const parsed = JSON.parse(storedHistory);
-                if (Array.isArray(parsed)) {
-                    setHistory(parsed);
-                }
-            } catch (e) {
-                console.error('Failed to parse search history:', e);
-                localStorage.removeItem(SEARCH_HISTORY_KEY);
-            }
+            setHistory(JSON.parse(storedHistory));
         }
     }, []);
 
@@ -83,9 +55,9 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
         };
     }, []);
 
-    // 3. Unified Search API Call (Debounced) - UPDATED FOR EXPLORE PAGE
+    // 3. Search API Call (Debounced) - UPDATED with DEBUGGING
     const fetchResults = useCallback(debounce(async (value, type) => {
-        console.log("🔍 [ExploreSearch] fetchResults called with:", { value, type });
+        console.log("🔍 fetchResults called with:", { value, type });
         
         if (value.length < 2) {
             setSearchResults([]);
@@ -98,101 +70,143 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
         setSearchError('');
         
         try {
-            // USE EXPLORE SEARCH ENDPOINT FOR BOTH USERS AND POSTS
-            const url = `http://localhost:5000/api/explore/search?q=${encodeURIComponent(value)}`;
+            let response;
+            let data;
             
-            console.log("📡 [ExploreSearch] Making unified search request to:", url);
-            console.log("📝 [ExploreSearch] Search query:", value);
-            console.log("🔑 [ExploreSearch] Token exists:", !!token);
-            
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            console.log("📡 [ExploreSearch] Response status:", response.status);
-            console.log("📡 [ExploreSearch] Response status text:", response.statusText);
-            
-            if (!response.ok) {
-                let errorMessage = '';
+            if (type === 'users') {
+                // User search
+                const url = `http://localhost:5000/api/users/search?name=${encodeURIComponent(value)}`;
                 
-                try {
-                    const errorData = await response.json();
-                    console.log("❌ [ExploreSearch] Error data:", errorData);
-                    errorMessage = errorData.message || errorData.error || `Server error (${response.status})`;
-                } catch (jsonError) {
-                    console.log("❌ [ExploreSearch] Could not parse error as JSON:", jsonError);
-                    const responseText = await response.text();
-                    console.log("❌ [ExploreSearch] Raw response text:", responseText);
-                    errorMessage = `Server error: ${response.status} ${response.statusText}`;
-                }
+                console.log("📡 Making user search request to:", url);
+                console.log("📝 Search query:", value);
+                console.log("🔑 Token exists:", !!token);
+                console.log("🔑 Token preview:", token ? `${token.substring(0, 20)}...` : 'No token');
                 
-                throw new Error(errorMessage);
-            }
-            
-            const data = await response.json();
-            console.log("✅ [ExploreSearch] Unified search results:", data);
-            
-            // Process results from explore endpoint
-            if (data.results && Array.isArray(data.results)) {
-                // Format results for display
-                const formattedResults = data.results.map(item => {
-                    if (item.type === 'user') {
-                        return {
-                            type: 'user',
-                            _id: item._id,
-                            name: item.name,
-                            email: item.email,
-                            profilePhoto: item.profilePhoto,
-                            department: item.department || item.facultyDepartment,
-                            role: item.role,
-                            isPrivate: item.isPrivate,
-                            followers: item.followers || [],
-                            connections: item.connections || []
-                        };
-                    } else if (item.type === 'post') {
-                        return {
-                            type: 'post',
-                            _id: item._id,
-                            content: item.content,
-                            createdAt: item.createdAt,
-                            likes: item.likes || [],
-                            comments: item.comments || [],
-                            media: item.media || [],
-                            tags: item.tags || [],
-                            category: item.category,
-                            user: item.user || {
-                                name: "Unknown User",
-                                profilePhoto: null,
-                                role: 'user',
-                                department: ''
-                            }
-                        };
-                    } else if (item.type === 'hashtag') {
-                        return {
-                            type: 'hashtag',
-                            tag: item.tag,
-                            count: item.count,
-                            lastUsed: item.lastUsed
-                        };
+                response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
                     }
-                    return item;
                 });
                 
-                setSearchResults(formattedResults);
+                console.log("📡 Response status:", response.status);
+                console.log("📡 Response status text:", response.statusText);
+                
+                // Handle different response statuses
+                if (!response.ok) {
+                    let errorMessage = '';
+                    
+                    // Try to parse JSON error first
+                    try {
+                        const errorData = await response.json();
+                        console.log("❌ Error data:", errorData);
+                        errorMessage = errorData.message || errorData.error || `Server error (${response.status})`;
+                    } catch (jsonError) {
+                        console.log("❌ Could not parse error as JSON:", jsonError);
+                        // If not JSON, use status text
+                        const responseText = await response.text();
+                        console.log("❌ Raw response text:", responseText);
+                        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+                    }
+                    
+                    throw new Error(errorMessage);
+                }
+                
+                data = await response.json();
+                console.log("✅ User search results data:", data);
+                
+                // Ensure data is an array
+                if (!Array.isArray(data)) {
+                    console.warn("⚠️ Search response is not an array:", data);
+                    data = [];
+                }
+                
+                // Add type to each result
+                data = data.map(user => ({ ...user, type: 'user' }));
+                
             } else {
-                console.warn("⚠️ [ExploreSearch] Unexpected response format:", data);
-                setSearchResults([]);
+                // Post search - FIXED: Remove # from query if present
+                let searchQuery = value;
+                
+                // Remove # symbol if user typed it
+                if (searchQuery.startsWith('#')) {
+                    searchQuery = searchQuery.substring(1);
+                }
+                
+                const url = `http://localhost:5000/api/posts/search?q=${encodeURIComponent(searchQuery)}`;
+                
+                console.log("🔍 Making post search request to:", url);
+                console.log("📝 Post search query:", searchQuery);
+                console.log("🔑 Token exists:", !!token);
+                
+                response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log("📡 Post response status:", response.status);
+                console.log("📡 Post response status text:", response.statusText);
+                
+                if (!response.ok) {
+                    let errorMessage = '';
+                    try {
+                        const errorData = await response.json();
+                        console.log("❌ Post error data:", errorData);
+                        errorMessage = errorData.message || errorData.error || `Server error (${response.status})`;
+                    } catch (jsonError) {
+                        console.log("❌ Could not parse error as JSON:", jsonError);
+                        const responseText = await response.text();
+                        console.log("❌ Raw post response text:", responseText);
+                        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+                    }
+                    throw new Error(errorMessage);
+                }
+                
+                const result = await response.json();
+                console.log("✅ Post search results:", result);
+                
+                // Handle different response formats
+                if (result.results && Array.isArray(result.results)) {
+                    data = result.results.map(post => ({ 
+                        ...post, 
+                        type: 'post',
+                        // Ensure user object exists
+                        user: post.user || {
+                            id: 'unknown',
+                            name: "Unknown User",
+                            profilePhoto: null,
+                            role: 'user',
+                            department: ''
+                        }
+                    }));
+                } else if (Array.isArray(result)) {
+                    data = result.map(post => ({ 
+                        ...post, 
+                        type: 'post',
+                        // Ensure user object exists
+                        user: post.user || {
+                            id: 'unknown',
+                            name: "Unknown User",
+                            profilePhoto: null,
+                            role: 'user',
+                            department: ''
+                        }
+                    }));
+                } else {
+                    data = [];
+                }
             }
             
+            setSearchResults(data);
             setSearchError('');
             
         } catch (error) {
-            console.error('🔥 [ExploreSearch] Search error details:', error);
-            console.error('🔥 [ExploreSearch] Error stack:', error.stack);
+            console.error('🔥 Search error details:', error);
+            console.error('🔥 Error stack:', error.stack);
             
             // Provide user-friendly error messages
             let userErrorMessage = 'Search failed. ';
@@ -214,60 +228,32 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
         }
     }, 500), [token]);
 
-    // 4. Input Change Handler - IMPROVED for Explore page
+    // 4. Input Change Handler - FIXED: Better search type detection
     const handleSearchChange = (event) => {
         const value = event.target.value;
-        console.log("⌨️ [ExploreSearch] Input changed to:", value);
+        console.log("⌨️ Input changed to:", value);
         setQuery(value);
         setDropdownOpen(true);
         
-        // Always use 'explore' search type which searches everything
-        setSearchType('explore');
+        // Determine search type based on query
+        let newSearchType = 'users';
         
-        // Trigger search
-        if (value.trim().length >= 2) {
-            fetchResults(value, 'explore');
-        } else {
-            setSearchResults([]);
-            setLoading(false);
+        // If query starts with # OR contains keywords like "post", search posts
+        if (value.startsWith('#') || 
+            value.toLowerCase().includes('post') || 
+            value.toLowerCase().includes('blog') ||
+            value.toLowerCase().includes('content') ||
+            value.toLowerCase().includes('status') ||
+            value.toLowerCase().includes('update')) {
+            newSearchType = 'posts';
         }
+        
+        console.log("🔍 Search type set to:", newSearchType);
+        setSearchType(newSearchType);
+        fetchResults(value, newSearchType);
     };
 
-    // 5. Handle Enter key press - Navigate to Explore page with search
-    const handleKeyPress = (event) => {
-        if (event.key === 'Enter' && query.trim().length >= 2) {
-            console.log("↵ [ExploreSearch] Enter pressed with query:", query);
-            
-            // Save to history
-            saveToHistory(query);
-            
-            // Close dropdown
-            setDropdownOpen(false);
-            
-            // If we're not on Explore page, navigate there
-            if (!window.location.pathname.includes('/explore')) {
-                console.log("🧭 [ExploreSearch] Navigating to Explore page with search query");
-                
-                // Dispatch event for Explore page to handle
-                const searchEvent = new CustomEvent('navbarSearch', {
-                    detail: { query: query.trim() }
-                });
-                window.dispatchEvent(searchEvent);
-                
-                // Navigate to Explore page
-                navigate(`/explore?search=${encodeURIComponent(query.trim())}`);
-            } else {
-                // If already on Explore page, just trigger the search
-                console.log("🎯 [ExploreSearch] Already on Explore page, triggering search");
-                const searchEvent = new CustomEvent('navbarSearch', {
-                    detail: { query: query.trim() }
-                });
-                window.dispatchEvent(searchEvent);
-            }
-        }
-    };
-
-    // 6. History Management Functions
+    // 5. History Management Functions
     const saveToHistory = (searchTerm) => {
         if (!searchTerm.trim()) return;
 
@@ -290,128 +276,123 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
         localStorage.removeItem(SEARCH_HISTORY_KEY);
     };
 
-    // 7. Click Handler for History Item
+    // 6. Click Handler for History Item
     const handleHistoryClick = (term) => {
-        console.log("📚 [ExploreSearch] History item clicked:", term);
+        console.log("📚 History item clicked:", term);
         setQuery(term);
         setDropdownOpen(true);
-        setSearchType('explore');
-        fetchResults(term, 'explore');
+        // Determine search type for history click
+        let newSearchType = 'users';
+        if (term.startsWith('#') || term.toLowerCase().includes('post')) {
+            newSearchType = 'posts';
+        }
+        setSearchType(newSearchType);
+        fetchResults(term, newSearchType);
     };
 
-    // 8. Click Handler for User Result
+    // 7. Click Handler for User Result - FIXED: Proper navigation
     const handleUserClick = (user) => {
-        console.log("👤 [ExploreSearch] User clicked:", user.name, "ID:", user._id);
+        console.log("👤 User clicked:", user.name, "ID:", user._id);
         saveToHistory(query);
         
-        // Close dropdown
-        setDropdownOpen(false);
-        
-        // Clear search
-        setQuery('');
-        setSearchResults([]);
-        
-        // Navigate to user profile
+        // ✅ Navigate to user profile page using the user's ID
         if (user._id) {
             navigate(`/profile/${user._id}`);
+        } else if (user.id) {
+            navigate(`/profile/${user.id}`);
         } else {
-            console.error("❌ [ExploreSearch] No user ID found:", user);
+            console.error("❌ No user ID found:", user);
+            alert("Cannot navigate: User ID not found");
         }
         
-        // Call prop function if exists
+        // ✅ Also call the prop function if it exists
         if (onUserSelect) {
             onUserSelect(user);
         }
+        
+        setDropdownOpen(false);
     };
 
-    // 9. Click Handler for Post Result - For Explore page, we stay on Explore
+    // 8. Click Handler for Post Result - FIXED: Store in localStorage for Feed to read
     const handlePostClick = (post) => {
-        console.log("📝 [ExploreSearch] Post clicked:", post._id);
+        console.log("📝 Post clicked:", post._id);
         
         saveToHistory(query);
         
-        // Close dropdown
+        // Store post data for highlighting
+        const postHighlightData = {
+            postId: post._id,
+            postContent: post.content,
+            postUser: post.user?.name || "Unknown User",
+            timestamp: Date.now(),
+            searchQuery: query
+        };
+        
+        // DEBUG: Check what's being stored
+        console.log("🔍 DEBUG - Storing post data to localStorage:");
+        console.log("  Post ID:", post._id);
+        console.log("  Post Content:", post.content?.substring(0, 50));
+        console.log("  User:", post.user?.name);
+        console.log("  Search Query:", query);
+        
+        // Store in localStorage (will be read by Feed component)
+        localStorage.setItem('searchHighlightedPost', JSON.stringify(postHighlightData));
+        console.log("✅ Stored to localStorage as 'searchHighlightedPost'");
+        
+        // Also store in sessionStorage for immediate access
+        sessionStorage.setItem('highlightedPostId', post._id);
+        console.log("✅ Also stored to sessionStorage as 'highlightedPostId'");
+        
+        // Navigate to feed WITH query parameter
+        navigate(`/feed?highlight=${post._id}&from=search&t=${Date.now()}`);
+        
         setDropdownOpen(false);
         
-        // Clear search
-        setQuery('');
-        setSearchResults([]);
-        
-        // If we're on Explore page, just trigger a search for this post's content
-        if (window.location.pathname.includes('/explore')) {
-            console.log("🎯 [ExploreSearch] On Explore page, triggering post highlight");
-            
-            // Dispatch event for Explore page to handle
-            const postEvent = new CustomEvent('explorePostClick', {
-                detail: { 
-                    postId: post._id,
-                    content: post.content,
-                    searchQuery: query
-                }
-            });
-            window.dispatchEvent(postEvent);
-            
-            // Also trigger hashtag search if post has tags
-            if (post.tags && post.tags.length > 0) {
-                const tagEvent = new CustomEvent('exploreHashtagClick', {
-                    detail: { tag: post.tags[0] }
-                });
-                window.dispatchEvent(tagEvent);
+        // 🔥 IMPORTANT: Trigger multiple events to ensure Feed catches it
+        setTimeout(() => {
+            // Method 1: Dispatch storage event (for storage event listeners)
+            try {
+                window.dispatchEvent(new StorageEvent('storage', {
+                    key: 'searchHighlightedPost',
+                    newValue: JSON.stringify(postHighlightData),
+                    oldValue: null,
+                    url: window.location.href
+                }));
+            } catch (e) {
+                // Some browsers don't allow creating StorageEvent directly
+                const event = new Event('storage');
+                event.key = 'searchHighlightedPost';
+                event.newValue = JSON.stringify(postHighlightData);
+                window.dispatchEvent(event);
             }
-        } else {
-            // If not on Explore page, navigate there with post context
-            console.log("🧭 [ExploreSearch] Navigating to Explore page with post context");
             
-            // Store post data for Explore page
-            const postData = {
-                postId: post._id,
-                type: 'post',
-                searchQuery: query,
-                timestamp: Date.now()
-            };
+            // Method 2: Dispatch custom feedHighlight event
+            window.dispatchEvent(new CustomEvent('feedHighlight', {
+                detail: { postId: post._id }
+            }));
             
-            localStorage.setItem('exploreSearchData', JSON.stringify(postData));
+            // Method 3: Call global function if exists
+            if (window.triggerFeedHighlight) {
+                console.log("🎯 Calling window.triggerFeedHighlight()");
+                window.triggerFeedHighlight();
+            }
             
-            // Navigate to Explore page
-            navigate(`/explore?post=${post._id}&search=${encodeURIComponent(query)}`);
-        }
+            // Method 4: Force a refresh via global function
+            if (window.refreshFeedPosts) {
+                console.log("🔄 Calling window.refreshFeedPosts()");
+                window.refreshFeedPosts();
+            }
+            
+            console.log("🎯 All highlight triggers dispatched");
+        }, 200); // Increased delay to ensure navigation completes
     };
 
-    // 10. Click Handler for Hashtag Result
-    const handleHashtagClick = (hashtag) => {
-        console.log("🏷️ [ExploreSearch] Hashtag clicked:", hashtag.tag);
-        
-        const tagText = `#${hashtag.tag}`;
-        saveToHistory(tagText);
-        
-        // Close dropdown
-        setDropdownOpen(false);
-        
-        // Clear search
-        setQuery('');
-        setSearchResults([]);
-        
-        // If we're on Explore page, trigger hashtag search
-        if (window.location.pathname.includes('/explore')) {
-            console.log("🎯 [ExploreSearch] On Explore page, triggering hashtag search");
-            
-            const hashtagEvent = new CustomEvent('exploreHashtagClick', {
-                detail: { tag: hashtag.tag }
-            });
-            window.dispatchEvent(hashtagEvent);
-        } else {
-            // Navigate to Explore page with hashtag
-            console.log("🧭 [ExploreSearch] Navigating to Explore page with hashtag");
-            navigate(`/explore?hashtag=${encodeURIComponent(hashtag.tag)}`);
-        }
-    };
-
-    // 11. Get search result content - UPDATED for Explore page
+    // 9. Get search result content - FIXED: Better post display
     const renderSearchResult = (item) => {
         if (item.type === 'user') {
             return (
                 <div 
-                    key={`user-${item._id}`} 
+                    key={item._id || item.id} 
                     className="result-item user-result" 
                     onClick={() => handleUserClick(item)}
                 >
@@ -419,23 +400,11 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
                         {getUserAvatar(item)}
                     </div>
                     <div className="result-details">
-                        <div className="result-header">
-                            <span className="result-name">{item.name || 'Unknown User'}</span>
-                            {item.role === 'faculty' && (
-                                <span className="verified-badge"> 👨‍🏫</span>
-                            )}
-                            {item.role === 'admin' && (
-                                <span className="admin-badge"> 👑</span>
-                            )}
-                        </div>
+                        <span className="result-name">{item.name || 'Unknown User'}</span>
+                        <span className="result-email">{item.email || ''}</span>
                         {item.department && (
                             <span className="result-department">🏛️ {item.department}</span>
                         )}
-                        <div className="result-stats">
-                            <span>{item.followers?.length || 0} followers</span>
-                            <span>•</span>
-                            <span>{item.connections?.length || 0} connections</span>
-                        </div>
                         <span className="result-type">👤 User</span>
                     </div>
                 </div>
@@ -444,7 +413,7 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
             const user = item.user || {};
             return (
                 <div 
-                    key={`post-${item._id}`} 
+                    key={item._id} 
                     className="result-item post-result" 
                     onClick={() => handlePostClick(item)}
                 >
@@ -457,49 +426,17 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
                             <span className="post-type">📝 Post</span>
                         </div>
                         <p className="post-content-preview">
-                            {item.content && item.content.length > 120 
-                                ? `${item.content.substring(0, 120)}...` 
+                            {item.content && item.content.length > 100 
+                                ? `${item.content.substring(0, 100)}...` 
                                 : item.content || 'No content'}
                         </p>
-                        {item.tags && item.tags.length > 0 && (
-                            <div className="post-tags-preview">
-                                {item.tags.slice(0, 3).map(tag => (
-                                    <span key={tag} className="post-tag">#{tag}</span>
-                                ))}
-                                {item.tags.length > 3 && (
-                                    <span className="more-tags">+{item.tags.length - 3} more</span>
-                                )}
-                            </div>
-                        )}
                         <div className="post-stats-preview">
                             <span>👍 {item.likes?.length || 0}</span>
                             <span>💬 {item.comments?.length || 0}</span>
                             <span className="post-time">
-                                {item.createdAt ? formatTimeAgo(item.createdAt) : ''}
+                                {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}
                             </span>
                         </div>
-                    </div>
-                </div>
-            );
-        } else if (item.type === 'hashtag') {
-            return (
-                <div 
-                    key={`hashtag-${item.tag}`} 
-                    className="result-item hashtag-result" 
-                    onClick={() => handleHashtagClick(item)}
-                >
-                    <div className="hashtag-icon">#</div>
-                    <div className="hashtag-details">
-                        <div className="hashtag-header">
-                            <span className="hashtag-tag">#{item.tag}</span>
-                            <span className="hashtag-type">🏷️ Hashtag</span>
-                        </div>
-                        <span className="hashtag-count">{item.count.toLocaleString()} posts</span>
-                        {item.lastUsed && (
-                            <span className="hashtag-last-used">
-                                Last used: {formatTimeAgo(item.lastUsed)}
-                            </span>
-                        )}
                     </div>
                 </div>
             );
@@ -507,13 +444,12 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
         return null;
     };
 
-    // 12. Determine what content to show in the dropdown
+    // Determine what content to show in the dropdown
     const getDropdownContent = () => {
         if (loading) {
             return (
                 <div className="dropdown-status-message">
-                    <div className="search-spinner"></div>
-                    <span>Searching for "{query}"...</span>
+                    <span className="search-spinner"></span> Searching for "{query}"...
                 </div>
             );
         }
@@ -534,69 +470,24 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
         if (query.trim().length > 1) {
             // --- Show Live Results ---
             if (searchResults.length > 0) {
-                // Group results by type
-                const userResults = searchResults.filter(item => item.type === 'user');
-                const postResults = searchResults.filter(item => item.type === 'post');
-                const hashtagResults = searchResults.filter(item => item.type === 'hashtag');
-
                 return (
                     <>
-                        <div className="search-summary">
-                            Found {searchResults.length} results for "{query}"
+                        <div className="search-type-indicator">
+                            Searching in: <strong>{searchType === 'users' ? '👥 Users' : '📝 Posts'}</strong>
+                            <small style={{marginLeft: '10px', opacity: 0.7}}>
+                                ({searchResults.length} results)
+                            </small>
                         </div>
-                        
-                        {userResults.length > 0 && (
-                            <div className="result-section">
-                                <div className="result-section-title">👥 Users ({userResults.length})</div>
-                                {userResults.slice(0, 3).map(renderSearchResult)}
-                                {userResults.length > 3 && (
-                                    <div className="view-all-link" onClick={() => {
-                                        saveToHistory(query);
-                                        navigate(`/explore?search=${encodeURIComponent(query)}&type=users`);
-                                        setDropdownOpen(false);
-                                    }}>
-                                        View all {userResults.length} users →
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        
-                        {postResults.length > 0 && (
-                            <div className="result-section">
-                                <div className="result-section-title">📝 Posts ({postResults.length})</div>
-                                {postResults.slice(0, 3).map(renderSearchResult)}
-                                {postResults.length > 3 && (
-                                    <div className="view-all-link" onClick={() => {
-                                        saveToHistory(query);
-                                        navigate(`/explore?search=${encodeURIComponent(query)}&type=posts`);
-                                        setDropdownOpen(false);
-                                    }}>
-                                        View all {postResults.length} posts →
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        
-                        {hashtagResults.length > 0 && (
-                            <div className="result-section">
-                                <div className="result-section-title">🏷️ Hashtags ({hashtagResults.length})</div>
-                                {hashtagResults.slice(0, 3).map(renderSearchResult)}
-                            </div>
-                        )}
-                        
-                        <div className="search-footer">
-                            <small>Press Enter to view all results in Explore page</small>
-                        </div>
+                        {searchResults.map(renderSearchResult)}
                     </>
                 );
             } else {
                 return (
                     <div className="dropdown-status-message">
-                        No results found for "{query}".
+                        No {searchType === 'users' ? 'users' : 'posts'} found for "{query}".
                         <div className="search-tips">
                             <small>• Try different keywords</small><br/>
-                            <small>• Search for people by name</small><br/>
-                            <small>• Use # to search hashtags (e.g., #DSA, #exam)</small>
+                            <small>• Use # to search posts (e.g., #DSA, #exam)</small>
                         </div>
                     </div>
                 );
@@ -607,54 +498,45 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
                 return (
                     <>
                         <div className="dropdown-history-header">
-                            <span>Recent Searches</span>
+                            Recent Searches
                             <button 
                                 className="clear-history-btn-small"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    clearHistory();
-                                }}
+                                onClick={clearHistory}
+                                style={{marginLeft: 'auto', fontSize: '12px'}}
                             >
                                 Clear All
                             </button>
                         </div>
-                        {history.slice(0, 5).map(item => (
+                        {history.map(item => (
                             <div key={item} className="history-item">
                                 <div 
                                     className="history-content" 
                                     onClick={() => handleHistoryClick(item)}
                                 >
                                     <IoSearchOutline className="search-icon-small" />
-                                    <span className="history-text">{item}</span>
+                                    <span>{item}</span>
                                     <span className="history-type-badge">
-                                        {item.startsWith('#') ? '🏷️' : '👤'}
+                                        {item.startsWith('#') ? '📝' : '👤'}
                                     </span>
                                 </div>
                                 <button 
                                     className="delete-history-btn"
-                                    onClick={(e) => { 
-                                        e.stopPropagation(); 
-                                        deleteHistoryItem(item); 
-                                    }}
+                                    onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item); }}
                                 >
                                     <IoCloseOutline />
                                 </button>
                             </div>
                         ))}
-                        <div className="search-tips" style={{ padding: '10px', fontSize: '12px', color: '#666' }}>
-                            <small>Tip: Start typing to search users, posts, or hashtags</small>
-                        </div>
                     </>
                 );
             } else {
                 return (
                     <div className="dropdown-status-message">
+                        Start typing to search for users or posts...
                         <div className="search-tips">
-                            <h4>Search Tips:</h4>
                             <small>• Type names to search users</small><br/>
-                            <small>• Use # to search hashtags (e.g., #DSA, #exam)</small><br/>
-                            <small>• Search for posts by content</small><br/>
-                            <small>• Press Enter for advanced search in Explore page</small>
+                            <small>• Use # to search posts (e.g., #DSA, #exam)</small><br/>
+                            <small>• Or type "post" followed by keywords</small>
                         </div>
                     </div>
                 );
@@ -662,46 +544,95 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
         }
     };
 
-    // 13. Clear search
+    // Clear search results when dropdown closes
     const handleClearSearch = () => {
-        console.log("🗑️ [ExploreSearch] Clearing search");
+        console.log("🗑️ Clearing search");
         setQuery('');
         setSearchResults([]);
         setSearchError('');
-        setDropdownOpen(false);
-    };
-
-    // 14. Focus on input
-    const handleInputFocus = () => {
         setDropdownOpen(true);
     };
 
+    // Debug function to test the endpoints
+    const testEndpoints = async () => {
+        console.log("🧪 Testing search endpoints...");
+        console.log("Token exists:", !!token);
+        
+        // Test user search
+        try {
+            const userResponse = await fetch('http://localhost:5000/api/users/search?name=test', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            console.log("👤 User search status:", userResponse.status);
+            if (userResponse.ok) {
+                const userData = await userResponse.json();
+                console.log("👤 User search results:", userData.length, "users found");
+            }
+        } catch (error) {
+            console.error("👤 User search test failed:", error);
+        }
+        
+        // Test post search
+        try {
+            const postResponse = await fetch('http://localhost:5000/api/posts/search?q=test', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+            console.log("📝 Post search status:", postResponse.status);
+            if (postResponse.ok) {
+                const postData = await postResponse.json();
+                console.log("📝 Post search results:", postData);
+            }
+        } catch (error) {
+            console.error("📝 Post search test failed:", error);
+        }
+    };
+
+    // Add test button for debugging
+    useEffect(() => {
+        // Add test button to console for quick debugging
+        console.log("🚀 ExploreSearch component mounted");
+        console.log("🔧 Available commands:");
+        console.log("  - testEndpoints(): Test both search endpoints");
+        console.log("  - Type in search box to trigger search");
+        
+        // Make testEndpoint available globally for console testing
+        window.testSearchEndpoints = testEndpoints;
+        
+        return () => {
+            delete window.testSearchEndpoints;
+        };
+    }, []);
+
     return (
-        <div className="explore-search-wrapper" ref={wrapperRef}>
+        <div className="explore-wrapper" ref={wrapperRef}>
             <div className="explore-input-container">
                 <IoSearchOutline className="search-icon" />
                 <input
                     type="text"
-                    placeholder="Search users, posts, hashtags... Press Enter for Explore"
+                    placeholder="Search for people or posts... (use # for posts)"
                     className="explore-input"
                     value={query}
                     onChange={handleSearchChange}
-                    onKeyPress={handleKeyPress}
-                    onFocus={handleInputFocus}
+                    onFocus={() => setDropdownOpen(true)}
                 />
                 {query && (
                     <button 
                         className="clear-search-btn"
                         onClick={handleClearSearch}
-                        type="button"
                     >
                         <IoCloseOutline />
                     </button>
                 )}
             </div>
 
-            {dropdownOpen && (
-                <div className="explore-search-dropdown">
+            {dropdownOpen && (query.trim().length > 1 || history.length > 0) && (
+                <div className="explore-dropdown">
                     {getDropdownContent()}
                 </div>
             )}
@@ -710,3 +641,7 @@ const ExploreSearch = ({ onUserSelect, onSearch }) => {
 };
 
 export default ExploreSearch;
+
+
+
+
