@@ -1,4 +1,4 @@
-// server.js - COMPLETE UPDATED VERSION WITH CONNECTION HISTORY TRACKING
+// server.js - FINAL MERGED VERSION WITH ALL IMPROVEMENTS
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ObjectId } = require("mongodb");
@@ -382,6 +382,13 @@ const getConnectionHistory = async (userId, timeframe = 'all') => {
   }
 };
 
+// ==================== EXPLORE ROUTES ====================
+// Mount explore routes with database access
+app.use('/api/explore', (req, res, next) => {
+  req.db = db;
+  next();
+}, exploreRoutes);
+
 // ==================== AUTH ROUTES ====================
 
 // Register with Cloudinary
@@ -578,13 +585,6 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
-// ==================== EXPLORE ROUTES ====================
-// Mount explore routes with database access
-app.use('/api/explore', (req, res, next) => {
-  req.db = db;
-  next();
-}, exploreRoutes);
 
 // ==================== PROFILE ROUTES ====================
 
@@ -1126,11 +1126,13 @@ app.put("/api/posts/:id", auth, async (req, res) => {
   }
 });
 
+// ==================== YOUR 80-20 ALGORITHM FOR FEED ====================
+
 app.get("/api/posts", auth, async (req, res) => {
   try {
     const currentUserId = req.user.userId;
     
-    // Get current user's connections for privacy filtering
+    // Get user connections
     const currentUser = await db.collection('users').findOne(
       { _id: new ObjectId(currentUserId) },
       { projection: { connections: 1 } }
@@ -1138,170 +1140,95 @@ app.get("/api/posts", auth, async (req, res) => {
     
     const userConnections = currentUser?.connections || [];
     
-    // Get all posts sorted by latest first
+    // Get all posts
     const allPosts = await db.collection('posts').find().sort({ createdAt: -1 }).toArray();
     
-    console.log(`📊 Total posts in database: ${allPosts.length}`);
+    // Categorize posts
+    const connectionPosts = [];
+    const publicNonConnectionPosts = [];
     
-    // Arrays to categorize posts
-    let connectionPosts = [];
-    let publicNonConnectionPosts = [];
-    let privateNonConnectionPosts = [];
-    let ownPosts = [];
-    
-    // Get all users in posts to check their privacy
-    const uniqueUserIds = [...new Set(allPosts.map(p => p.userId.toString()))];
-    const userPrivacyMap = {};
-    
-    for (const userId of uniqueUserIds) {
-      const user = await db.collection('users').findOne(
-        { _id: new ObjectId(userId) },
-        { projection: { name: 1, isPrivate: 1 } }
-      );
-      
-      if (user) {
-        userPrivacyMap[userId] = {
-          name: user.name,
-          isPrivate: Boolean(user.isPrivate),
-          isConnection: userConnections.includes(userId),
-          isCurrentUser: userId === currentUserId
-        };
-      }
-    }
-    
-    // Process each post
     for (const post of allPosts) {
-      const postUserIdStr = post.userId.toString();
-      const userInfo = userPrivacyMap[postUserIdStr];
+      const postUser = await db.collection('users').findOne({ _id: new ObjectId(post.userId) });
       
-      if (!userInfo) continue;
+      if (!postUser) continue;
       
-      const { name, isPrivate, isConnection, isCurrentUser } = userInfo;
+      const isOwnPost = post.userId.toString() === currentUserId;
+      const isConnection = userConnections.includes(post.userId.toString());
+      const isPublicUser = postUser.isPrivate === false;
       
-      // Skip own posts (don't show in feed)
-      if (isCurrentUser) {
-        ownPosts.push(post);
-        continue;
-      }
+      if (isOwnPost) continue;
       
-      // Prepare post with user info
       const postWithUser = {
         ...post,
         user: {
-          id: post.userId,
-          name: name,
-          profilePhoto: null,
-          role: 'user',
-          department: '',
-          isPrivate: isPrivate
+          id: postUser._id,
+          name: postUser.name || "Unknown User",
+          profilePhoto: postUser.profilePhoto,
+          role: postUser.role,
+          department: postUser.department || postUser.facultyDepartment,
+          isPrivate: Boolean(postUser.isPrivate)
         }
       };
       
-      // Check if viewable and categorize
-      if (!isPrivate) {
-        // Public user
-        if (isConnection) {
-          connectionPosts.push(postWithUser);
-        } else {
-          publicNonConnectionPosts.push(postWithUser);
-        }
-      } else if (isConnection) {
-        // Private user but connected
+      if (isConnection) {
         connectionPosts.push(postWithUser);
-      } else {
-        // Private non-connection - cannot view
-        privateNonConnectionPosts.push(post);
+      }
+      else if (isPublicUser) {
+        publicNonConnectionPosts.push(postWithUser);
       }
     }
     
-    console.log(`📊 Categorized posts:
-      Own posts: ${ownPosts.length}
-      Connection posts: ${connectionPosts.length}
-      Public non-connection posts: ${publicNonConnectionPosts.length}
-      Private non-connection posts (hidden): ${privateNonConnectionPosts.length}`);
+    // ==================== YOUR 80-20 ALGORITHM ====================
     
-    // ==================== 70-30 ALGORITHM ====================
+    const availableConnections = connectionPosts.length;
+    const availablePublic = publicNonConnectionPosts.length;
     
-    // Combine all viewable posts
-    const allViewablePosts = [...publicNonConnectionPosts, ...connectionPosts];
+    // Calculate 20% of total feed
+    // If connections = 80% of feed, then total feed = connections ÷ 0.8
+    const totalFeedIfAllConnections = Math.ceil(availableConnections / 0.8);
+    const targetPublicFor20Percent = Math.ceil(totalFeedIfAllConnections * 0.2);
     
-    // If few posts, just show all mixed by time
-    if (allViewablePosts.length <= 20) {
-      allViewablePosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      console.log(`✅ Showing ALL ${allViewablePosts.length} posts (few available)`);
-      
-      const finalPosts = await addUserDetails(allViewablePosts);
-      return res.json(finalPosts);
+    // Take available posts
+    const targetPublic = Math.min(targetPublicFor20Percent, availablePublic);
+    
+    const allFriendPosts = connectionPosts;
+    const discoveryPosts = publicNonConnectionPosts.slice(0, targetPublic);
+    
+    // Mix by time
+    const allPostsMixed = [...allFriendPosts, ...discoveryPosts];
+    
+    // Shuffle
+    for (let i = allPostsMixed.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allPostsMixed[i], allPostsMixed[j]] = [allPostsMixed[j], allPostsMixed[i]];
     }
     
-    // Calculate 70-30 targets
-    const totalVisible = allViewablePosts.length;
-    const targetPublicCount = Math.floor(totalVisible * 0.7);
-    const targetConnectionCount = Math.floor(totalVisible * 0.3);
+    // Sort by time
+    allPostsMixed.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     
-    // Take required posts (already sorted by time)
-    const selectedPublicPosts = publicNonConnectionPosts.slice(0, targetPublicCount);
-    const selectedConnectionPosts = connectionPosts.slice(0, targetConnectionCount);
+    // ==================== DETAILED CONSOLE OUTPUT ====================
+    console.log("┌─────────────────────────────────────┐");
+    console.log("│           FEED STATISTICS           │");
+    console.log("├─────────────────────────────────────┤");
+    console.log(`│ Connection posts: ${availableConnections.toString().padEnd(3)} available │`);
+    console.log(`│ Public posts:     ${availablePublic.toString().padEnd(3)} available │`);
+    console.log("├─────────────────────────────────────┤");
+    console.log(`│ 20% of total feed: ${targetPublicFor20Percent} posts needed │`);
+    console.log(`│ Public posts used: ${targetPublic} posts │`);
+    console.log("├─────────────────────────────────────┤");
+    console.log(`│ FINAL FEED: ${allPostsMixed.length} total posts      │`);
+    console.log(`│ - Friends:  ${allFriendPosts.length} posts           │`);
+    console.log(`│ - Public:   ${discoveryPosts.length} posts           │`);
+    console.log("└─────────────────────────────────────┘");
     
-    // ==================== MIX POSTS BY TIME ====================
+    res.json(allPostsMixed);
     
-    const mixedPosts = [];
-    let publicIndex = 0;
-    let connectionIndex = 0;
-    
-    // Mix in ratio: 2-3 public posts, then 1 connection post
-    while (publicIndex < selectedPublicPosts.length || connectionIndex < selectedConnectionPosts.length) {
-      // Add 2-3 public posts
-      const publicBatch = Math.min(2 + Math.floor(Math.random() * 2), selectedPublicPosts.length - publicIndex);
-      for (let i = 0; i < publicBatch && publicIndex < selectedPublicPosts.length; i++) {
-        mixedPosts.push(selectedPublicPosts[publicIndex]);
-        publicIndex++;
-      }
-      
-      // Add 1 connection post
-      if (connectionIndex < selectedConnectionPosts.length) {
-        mixedPosts.push(selectedConnectionPosts[connectionIndex]);
-        connectionIndex++;
-      }
-    }
-    
-    // Final sort by time (newest first)
-    mixedPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
-    console.log(`✅ Final feed: ${mixedPosts.length} posts
-      (${publicIndex} public + ${connectionIndex} connections)
-      Ratio: ${Math.round((publicIndex/mixedPosts.length)*100)}% public, ${Math.round((connectionIndex/mixedPosts.length)*100)}% connections`);
-    
-    // Add full user details
-    const finalPosts = await addUserDetails(mixedPosts);
-    
-    res.json(finalPosts);
     
   } catch (error) {
-    console.error("Error fetching posts:", error);
+    console.error("Error:", error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
-// Helper function to add user details
-async function addUserDetails(posts) {
-  return Promise.all(
-    posts.map(async (post) => {
-      const user = await db.collection('users').findOne({ _id: new ObjectId(post.userId) });
-      return {
-        ...post,
-        user: {
-          id: user?._id,
-          name: user?.name || "Unknown User",
-          profilePhoto: user?.profilePhoto,
-          role: user?.role,
-          department: user?.department || user?.facultyDepartment,
-          isPrivate: Boolean(user?.isPrivate)
-        }
-      };
-    })
-  );
-}
 
 // ==================== EVENT RSVP ROUTE ====================
 
@@ -1538,88 +1465,9 @@ app.post("/api/posts/:id/vote", auth, async (req, res) => {
   }
 });
 
-// Like/unlike post
-app.post("/api/posts/:postId/like", auth, async (req, res) => {
-  try {
-    const { postId } = req.params;
-    const userId = req.user.userId;
+// ==================== COMMENT ROUTES (YOUR IMPROVED VERSION) ====================
 
-    // Validate postId
-    if (!ObjectId.isValid(postId)) {
-      return res.status(400).json({ message: 'Invalid post ID' });
-    }
-
-    const post = await db.collection("posts").findOne({ _id: new ObjectId(postId) });
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    const postOwnerId = post.userId.toString();
-
-    // convert likes to string for uniform comparison
-    const normalizedLikes = (post.likes || []).map(id => id.toString());
-
-    const alreadyLiked = normalizedLikes.includes(userId);
-
-    if (alreadyLiked) {
-      await db.collection("posts").updateOne(
-        { _id: new ObjectId(postId) },
-        { $pull: { likes: userId } }
-      );
-    } else {
-      await db.collection("posts").updateOne(
-        { _id: new ObjectId(postId) },
-        { $push: { likes: userId } }
-      );
-    }
-
-    // Get post again
-    const updatedPost = await db.collection("posts").findOne({ _id: new ObjectId(postId) });
-    const user = await db.collection("users").findOne({ _id: new ObjectId(updatedPost.userId) });
-
-    // SEND NOTIFICATION ONLY IF:
-    // 1. it's a new like AND
-    // 2. liker is NOT the owner
-    if (!alreadyLiked && userId !== postOwnerId) {
-      const liker = await db.collection("users").findOne(
-        { _id: new ObjectId(userId) },
-        { projection: { name: 1, profilePhoto: 1 } }
-      );
-
-      if (liker) { 
-        await createNotification({
-          recipientId: postOwnerId,
-          senderId: userId,
-          type: "like",
-          postId,
-          message: `${liker.name} liked your post`
-        });
-      }
-    }
-
-    res.json({
-      _id: updatedPost._id,
-      content: updatedPost.content,
-      type: updatedPost.type || 'text',
-      media: updatedPost.media || [],
-      likes: updatedPost.likes || [],
-      comments: updatedPost.comments || [],
-      event: updatedPost.event || null,
-      poll: updatedPost.poll || null,
-      createdAt: updatedPost.createdAt,
-      user: {
-        id: user?._id,
-        name: user?.name || "Unknown User",
-        profilePhoto: user?.profilePhoto,
-        role: user?.role,
-        department: user?.department
-      }
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-});
-
-// Add comment to post
+// Add comment to post with UNIQUE ID
 app.post("/api/posts/:postId/comment", auth, async (req, res) => {
   try {
     const { content } = req.body;
@@ -1646,12 +1494,15 @@ app.post("/api/posts/:postId/comment", auth, async (req, res) => {
       return res.status(404).json({ message: 'Post not found' });
     }
 
+    // Create comment with UNIQUE ID
     const comment = {
+      _id: new ObjectId(), // ← THIS IS THE KEY! Add unique ID
       content: content.trim(),
       userId: userId,
       userName: user.name,
       userProfilePhoto: user.profilePhoto,
-      timestamp: new Date()
+      timestamp: new Date(),
+      likes: [] // Add likes array for consistency
     };
 
     await db.collection('posts').updateOne(
@@ -1699,6 +1550,322 @@ app.post("/api/posts/:postId/comment", auth, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Edit comment
+app.put("/api/posts/:postId/comments/:commentId", auth, async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.userId;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Comment content is required' });
+    }
+
+    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    // Find the comment
+    const commentIndex = post.comments.findIndex(
+      comment => comment._id?.toString() === commentId || 
+                 (comment.userId === userId && !comment._id)
+    );
+
+    if (commentIndex === -1) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    // Check if user is the comment owner
+    if (post.comments[commentIndex].userId !== userId) {
+      return res.status(403).json({ message: 'Not authorized to edit this comment' });
+    }
+
+    // Update the comment
+    post.comments[commentIndex].content = content.trim();
+    post.comments[commentIndex].updatedAt = new Date();
+
+    await db.collection('posts').updateOne(
+      { _id: new ObjectId(postId) },
+      { $set: { comments: post.comments } }
+    );
+
+    // Get updated post with user info
+    const updatedPost = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    const postUser = await db.collection('users').findOne({ _id: new ObjectId(updatedPost.userId) });
+    
+    const postResponse = {
+      _id: updatedPost._id,
+      content: updatedPost.content,
+      type: updatedPost.type || 'text',
+      media: updatedPost.media || [],
+      likes: updatedPost.likes || [],
+      comments: updatedPost.comments || [],
+      createdAt: updatedPost.createdAt,
+      user: {
+        id: postUser?._id,
+        name: postUser?.name || "Unknown User",
+        profilePhoto: postUser?.profilePhoto,
+        role: postUser?.role,
+        department: postUser?.department
+      }
+    };
+
+    res.json({
+      message: 'Comment updated successfully',
+      post: postResponse
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Delete comment
+app.delete("/api/posts/:postId/comments/:commentId", auth, async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const userId = req.user.userId;
+
+    // Validate IDs
+    if (!ObjectId.isValid(postId) || !ObjectId.isValid(commentId)) {
+      return res.status(400).json({ message: 'Invalid ID format' });
+    }
+
+    // Find the post
+    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    // Find the specific comment by its _id
+    const commentIndex = post.comments?.findIndex(
+      comment => comment._id && comment._id.toString() === commentId
+    );
+
+    if (commentIndex === -1) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    // Check if user owns the comment
+    if (post.comments[commentIndex].userId !== userId) {
+      return res.status(403).json({ message: 'Not authorized to delete this comment' });
+    }
+
+    // Remove the specific comment
+    post.comments.splice(commentIndex, 1);
+
+    await db.collection('posts').updateOne(
+      { _id: new ObjectId(postId) },
+      { $set: { comments: post.comments } }
+    );
+
+    // Get updated post
+    const updatedPost = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    const postUser = await db.collection('users').findOne({ _id: new ObjectId(updatedPost.userId) });
+    
+    const postResponse = {
+      _id: updatedPost._id,
+      content: updatedPost.content,
+      type: updatedPost.type || 'text',
+      media: updatedPost.media || [],
+      likes: updatedPost.likes || [],
+      comments: updatedPost.comments || [],
+      event: updatedPost.event || null,
+      poll: updatedPost.poll || null,
+      createdAt: updatedPost.createdAt,
+      user: {
+        id: postUser?._id,
+        name: postUser?.name || "Unknown User",
+        profilePhoto: postUser?.profilePhoto,
+        role: postUser?.role,
+        department: postUser?.department
+      }
+    };
+
+    res.json({
+      message: 'Comment deleted successfully',
+      post: postResponse
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Like/unlike comment
+app.post("/api/posts/:postId/comments/:commentId/like", auth, async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const userId = req.user.userId;
+
+    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    // Find the comment
+    const commentIndex = post.comments.findIndex(
+      comment => comment._id?.toString() === commentId || 
+                 (comment.userId === userId && !comment._id)
+    );
+
+    if (commentIndex === -1) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    // Initialize likes array if it doesn't exist
+    if (!post.comments[commentIndex].likes) {
+      post.comments[commentIndex].likes = [];
+    }
+
+    // Check if user already liked the comment
+    const likeIndex = post.comments[commentIndex].likes.indexOf(userId);
+    
+    if (likeIndex > -1) {
+      // Unlike
+      post.comments[commentIndex].likes.splice(likeIndex, 1);
+    } else {
+      // Like
+      post.comments[commentIndex].likes.push(userId);
+    }
+
+    await db.collection('posts').updateOne(
+      { _id: new ObjectId(postId) },
+      { $set: { comments: post.comments } }
+    );
+
+    // Get updated post with user info
+    const updatedPost = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    const postUser = await db.collection('users').findOne({ _id: new ObjectId(updatedPost.userId) });
+    
+    const postResponse = {
+      _id: updatedPost._id,
+      content: updatedPost.content,
+      type: updatedPost.type || 'text',
+      media: updatedPost.media || [],
+      likes: updatedPost.likes || [],
+      comments: updatedPost.comments || [],
+      createdAt: updatedPost.createdAt,
+      user: {
+        id: postUser?._id,
+        name: postUser?.name || "Unknown User",
+        profilePhoto: postUser?.profilePhoto,
+        role: postUser?.role,
+        department: postUser?.department
+      }
+    };
+
+    res.json({
+      message: likeIndex > -1 ? 'Comment unliked' : 'Comment liked',
+      post: postResponse
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ==================== LIKE/UNLIKE POST (YOUR IMPROVED VERSION) ====================
+
+app.post("/api/posts/:postId/like", auth, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.userId;
+
+    // Validate postId
+    if (!ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
+
+    const post = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    const postOwnerId = post.userId.toString();
+
+    // Initialize likes as array of objects if it doesn't exist
+    if (!post.likes) post.likes = [];
+    
+    // Get user info for the liker
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    
+    // Check if user already liked the post
+    const existingLikeIndex = post.likes.findIndex(like => {
+      // Handle both formats: string userId or object with userId
+      if (typeof like === 'string') {
+        return like === userId;
+      } else if (like && like.userId) {
+        return like.userId === userId;
+      }
+      return false;
+    });
+
+    if (existingLikeIndex > -1) {
+      // Unlike: remove the like
+      post.likes.splice(existingLikeIndex, 1);
+    } else {
+      // Like: add with timestamp and user info
+      const likeObject = {
+        userId: userId,
+        userName: user.name,
+        userProfilePhoto: user.profilePhoto,
+        timestamp: new Date()
+      };
+      post.likes.push(likeObject);
+    }
+
+    await db.collection('posts').updateOne(
+      { _id: new ObjectId(postId) },
+      { $set: { likes: post.likes } }
+    );
+
+    // Get updated post with populated user info
+    const updatedPost = await db.collection('posts').findOne({ _id: new ObjectId(postId) });
+    const postUser = await db.collection('users').findOne({ _id: new ObjectId(updatedPost.userId) });
+
+    // SEND NOTIFICATION ONLY IF:
+    // 1. it's a new like AND
+    // 2. liker is NOT the owner
+    if (existingLikeIndex === -1 && userId !== postOwnerId) {
+      const liker = await db.collection('users').findOne(
+        { _id: new ObjectId(userId) },
+        { projection: { name: 1, profilePhoto: 1 } }
+      );
+
+      if (liker) { 
+        await createNotification({
+          recipientId: postOwnerId,
+          senderId: userId,
+          type: "like",
+          postId,
+          message: `${liker.name} liked your post`
+        });
+      }
+    }
+
+    const postResponse = {
+      _id: updatedPost._id,
+      content: updatedPost.content,
+      type: updatedPost.type || 'text',
+      media: updatedPost.media || [],
+      likes: updatedPost.likes || [],
+      comments: updatedPost.comments || [],
+      event: updatedPost.event || null,
+      poll: updatedPost.poll || null,
+      createdAt: updatedPost.createdAt,
+      user: {
+        id: postUser?._id,
+        name: postUser?.name || "Unknown User",
+        profilePhoto: postUser?.profilePhoto,
+        role: postUser?.role,
+        department: postUser?.department
+      }
+    };
+
+    res.json(postResponse);
+  } catch (error) {
+    console.error("Error in like route:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 });
 
@@ -2034,7 +2201,6 @@ app.get("/api/users", auth, async (req, res) => {
   try {
     const currentUserId = req.user.userId;
     
-    // Get current user to exclude connections
     const currentUser = await db.collection('users').findOne(
       { _id: new ObjectId(currentUserId) },
       { projection: { connections: 1, sentRequests: 1, receivedRequests: 1 } }
@@ -2057,16 +2223,25 @@ app.get("/api/users", auth, async (req, res) => {
         email: 1,
         profilePhoto: 1,
         role: 1,
-        department: 1,
+        department: 1,           // Keep this
+        facultyDepartment: 1,    // Keep this
         designation: 1,
         bio: 1,
         skills: 1,
-        year: 1
+        year: 1,
+        company: 1,              // Add this
+        createdAt: 1             // Add this for timestamp
       })
       .limit(50)
       .toArray();
 
-    res.json(users);
+    // Process users to have a single department field
+    const processedUsers = users.map(user => ({
+      ...user,
+      department: user.department || user.facultyDepartment || ''
+    }));
+
+    res.json(processedUsers);
   } catch (error) {
     console.error("Error fetching users:", error);
     res.status(500).json({ message: 'Server error', error: error.message });

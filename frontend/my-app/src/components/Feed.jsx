@@ -6,6 +6,8 @@ import Toast from "../components/Toast";
 import "../styles/Notifications.css";
 import ExploreSearch from "../components/ExploreSearch";
 import "../styles/ExploreSearch.css";
+import PostModal from './PostModal';
+
 
 // ==================== IMAGE CAROUSEL COMPONENT ====================
 const ImageCarousel = ({ images, videos }) => {
@@ -506,7 +508,9 @@ const ImageCarousel = ({ images, videos }) => {
 };
 
 function Feed() {
-  
+  const [postModalOpen, setPostModalOpen] = useState(false);
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [allUsers, setAllUsers] = useState([]);
   const [posts, setPosts] = useState([]);
   const [newPost, setNewPost] = useState("");
   const [loading, setLoading] = useState(false);
@@ -839,6 +843,25 @@ function Feed() {
     }
   }, [navigate, scrollAndHighlightPost, setError, setIsProcessingHighlight, setPosts, setHighlightedPostId, setSearchPostData]);
 
+  // Fetch all users for PostModal
+  const fetchAllUsers = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/users', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const users = await response.json();
+        setAllUsers(users);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  }, []);
+  
   // Main initialization effect
   useEffect(() => {
     console.log("🔍 [Feed] Component mounted or refreshTrigger changed", { refreshTrigger });
@@ -856,6 +879,7 @@ function Feed() {
     
     isProcessingRef.current = false;
     fetchPosts();
+    fetchAllUsers();
 
     // SOCKET/NOTIFICATION LOGIC
     const socket = getSocket();
@@ -890,7 +914,7 @@ function Feed() {
         socket.off("new_notification");
       }
     };
-  }, [navigate, refreshTrigger, fetchPosts]);
+  }, [navigate, refreshTrigger, fetchPosts, fetchAllUsers]);
 
   // Check URL for highlight parameters
   useEffect(() => {
@@ -932,7 +956,6 @@ function Feed() {
   }, [posts, highlightedPostId, isProcessingHighlight, scrollAndHighlightPost]);
 
   // ==================== MEDIA UPLOAD FUNCTIONS ====================
-
   const handleFileSelect = (e) => {
     const files = e.target.files;
     if (!files.length) return;
@@ -972,7 +995,6 @@ function Feed() {
   };
 
   // ==================== EVENT AND POLL FUNCTIONS ====================
-
   const handleEventChange = (field, value) => {
     setEventData(prev => ({
       ...prev,
@@ -1016,7 +1038,6 @@ function Feed() {
   };
 
   // ==================== POST CREATION ====================
-
   const handleCreatePost = async () => {
     console.log("🚀 [Feed] Post button clicked!");
     console.log("📝 Post content:", newPost);
@@ -1183,7 +1204,6 @@ function Feed() {
   };
 
   // ==================== POST INTERACTIONS ====================
-
   const handleEventRSVP = async (postId, status) => {
     if (!user) return;
 
@@ -1276,15 +1296,19 @@ function Feed() {
             post._id === postId ? updatedPost : post
           )
         );
+        // Update selectedPost if modal is open
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(updatedPost);
+        }
       }
     } catch (error) {
       setError('Failed to like post');
     }
   };
 
-  const handleAddComment = async (postId) => {
-    const text = commentTexts[postId];
-    if (!text?.trim() || !user) return;
+  // Updated handleAddComment to work with PostModal
+  const handleAddComment = async (postId, commentText) => {
+    if (!commentText?.trim() || !user) return;
 
     setCommentLoading(prev => ({ ...prev, [postId]: true }));
     
@@ -1297,7 +1321,7 @@ function Feed() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          content: text
+          content: commentText
         })
       });
 
@@ -1310,20 +1334,153 @@ function Feed() {
             post._id === postId ? data.post : post
           )
         );
+        
+        // Update selectedPost if modal is open
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(data.post);
+        }
+        
         setSuccess('Comment added successfully!');
         setTimeout(() => setSuccess(""), 2000);
+        return data.post; // Return updated post
       } else {
         setError('Failed to add comment');
+        return null;
       }
     } catch (error) {
       setError('Network error: Unable to add comment');
+      return null;
     } finally {
       setCommentLoading(prev => ({ ...prev, [postId]: false }));
     }
   };
 
-  // ==================== POST DELETE FUNCTION ====================
+  // Open post modal with comments and likes
+  const openPostModal = (post) => {
+    setSelectedPost(post);
+    setPostModalOpen(true);
+  };
 
+  // Close post modal
+  const closePostModal = () => {
+    setSelectedPost(null);
+    setPostModalOpen(false);
+  };
+
+  // Handle edit comment
+  const handleEditComment = async (postId, commentId, text) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: text })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === postId ? data.post : post
+          )
+        );
+        
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(data.post);
+        }
+        
+        setSuccess('Comment updated!');
+        setTimeout(() => setSuccess(""), 2000);
+        return data.post;
+      }
+    } catch (error) {
+      setError('Failed to update comment');
+      return null;
+    }
+  };
+
+  const handleDeleteComment = async (postId, commentId) => {
+  if (!window.confirm('Delete this comment?')) return;
+
+  try {
+    const token = localStorage.getItem('token');
+    
+    console.log("Deleting comment:", { postId, commentId });
+    
+    const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("Comment deleted successfully:", data);
+      
+      setPosts(prevPosts => 
+        prevPosts.map(post => 
+          post._id === postId ? data.post : post
+        )
+      );
+      
+      if (selectedPost && selectedPost._id === postId) {
+        setSelectedPost(data.post);
+      }
+      
+      setSuccess('Comment deleted!');
+      setTimeout(() => setSuccess(""), 2000);
+      return data.post;
+    } else {
+      const errorData = await response.json();
+      console.error("Delete comment failed:", errorData);
+      setError(errorData.message || 'Failed to delete comment');
+      return null;
+    }
+  } catch (error) {
+    console.error("Error deleting comment:", error);
+    setError('Failed to delete comment');
+    return null;
+  }
+};
+ // In Feed.jsx, update the handleLikeComment function:
+const handleLikeComment = async (postId, commentId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}/like`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      setPosts(prevPosts => 
+        prevPosts.map(post => 
+          post._id === postId ? data.post : post
+        )
+      );
+      
+      if (selectedPost && selectedPost._id === postId) {
+        setSelectedPost(data.post);
+      }
+      return data.post;
+    } else {
+      const errorData = await response.json();
+      setError(errorData.message || 'Failed to like comment');
+      return null;
+    }
+  } catch (error) {
+    setError('Failed to like comment');
+    return null;
+  }
+};
+
+  // ==================== POST DELETE FUNCTION ====================
   const handleDeletePost = async (postId) => {
     if (!window.confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
       return;
@@ -1351,47 +1508,46 @@ function Feed() {
     }
   };
 
-  // Report post function - NEW WITH DROPDOWN
-const handleReportPost = async (postId) => {
-  // Open modal
-  setSelectedPostId(postId);
-  setShowReportModal(true);
-  setReportReason(""); // Reset reason
-};
+  // Report post function
+  const handleReportPost = async (postId) => {
+    setSelectedPostId(postId);
+    setShowReportModal(true);
+    setReportReason("");
+  };
 
-// New function to submit the report
-const handleSubmitReport = async () => {
-  if (!selectedPostId || !reportReason.trim()) {
-    setError("Please select a reason for reporting");
-    return;
-  }
-
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:5000/api/posts/${selectedPostId}/report`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ reason: reportReason })
-    });
-
-    const data = await response.json();
-    
-    if (response.ok) {
-      setSuccess('✅ Post reported successfully! Admin will review it.');
-      setTimeout(() => setSuccess(""), 3000);
-      setShowReportModal(false);
-      setSelectedPostId(null);
-      setReportReason("");
-    } else {
-      setError(data.message || 'Failed to report post');
+  // New function to submit the report
+  const handleSubmitReport = async () => {
+    if (!selectedPostId || !reportReason.trim()) {
+      setError("Please select a reason for reporting");
+      return;
     }
-  } catch (error) {
-    setError('Network error');
-  }
-};
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${selectedPostId}/report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ reason: reportReason })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSuccess('✅ Post reported successfully! Admin will review it.');
+        setTimeout(() => setSuccess(""), 3000);
+        setShowReportModal(false);
+        setSelectedPostId(null);
+        setReportReason("");
+      } else {
+        setError(data.message || 'Failed to report post');
+      }
+    } catch (error) {
+      setError('Network error');
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -1400,7 +1556,22 @@ const handleSubmitReport = async () => {
   };
 
   const isPostLiked = (post) => {
-    return post.likes?.includes(user?.id);
+    if (!user || !post.likes) return false;
+    
+    const userId = user.id;
+    
+    // Check if current user liked this post
+    return post.likes.some(like => {
+      // Handle string format (old): like = "userId"
+      if (typeof like === 'string') {
+        return like === userId;
+      }
+      // Handle object format (new): like = {userId: "123", userName: "John", ...}
+      else if (like && typeof like === 'object' && like.userId) {
+        return like.userId === userId;
+      }
+      return false;
+    });
   };
 
   // Check if user has RSVPed to an event
@@ -1464,7 +1635,7 @@ const handleSubmitReport = async () => {
   // Handler for user selected from search
   const handleUserSelectFromSearch = (selectedUser) => {
     if (selectedUser && selectedUser._id) {
-        navigate(`/profile/${selectedUser._id}`); 
+      navigate(`/profile/${selectedUser._id}`); 
     }
   };
 
@@ -2211,7 +2382,7 @@ const handleSubmitReport = async () => {
 
                     <div className="post-stats">
                       <span className="stat-item">
-                        👍 {post.likes?.length || 0}
+                        👍 {(post.likes && post.likes.length) || 0}
                       </span>
                       <span className="stat-item">
                         💬 {post.comments?.length || 0}
@@ -2238,11 +2409,11 @@ const handleSubmitReport = async () => {
                         className={`action-btn like-btn ${isPostLiked(post) ? 'liked' : ''}`}
                         onClick={() => handleLike(post._id)}
                       >
-                        {isPostLiked(post) ? '👍 Liked' : '🤍 Like'}
+                        {isPostLiked(post) ? '❤️ Liked' : '🤍 Like'}
                       </button>
                       <button 
-                        className={`action-btn comment-btn ${activeCommentSection === post._id ? 'active' : ''}`}
-                        onClick={() => toggleCommentSection(post._id)}
+                        className="action-btn comment-btn"
+                        onClick={() => openPostModal(post)}
                       >
                         💬 Comment
                       </button>
@@ -2250,62 +2421,13 @@ const handleSubmitReport = async () => {
                         🔄 Share
                       </button>
                       <button 
-                      className="action-btn report-btn"
-                      onClick={() => handleReportPost(post._id)}  // This calls the new function
-                      title="Report inappropriate content">
-                      🚨 Report
-                    </button>
+                        className="action-btn report-btn"
+                        onClick={() => handleReportPost(post._id)}
+                        title="Report inappropriate content"
+                      >
+                        🚨 Report
+                      </button>
                     </div>
-
-                    {/* Comments Section */}
-                    {activeCommentSection === post._id && (
-                      <div className="comments-section">
-                        {/* Display Existing Comments */}
-                        {post.comments && post.comments.length > 0 && (
-                          <div className="comments-list">
-                            <h4>Comments ({post.comments.length})</h4>
-                            {post.comments.map((comment, index) => (
-                              <div key={index} className="comment-item">
-                                <div className="comment-avatar">
-                                  {comment.userName?.charAt(0).toUpperCase() || "U"}
-                                </div>
-                                <div className="comment-content">
-                                  <div className="comment-header">
-                                    <span className="comment-author">{comment.userName}</span>
-                                    <span className="comment-time">
-                                      {new Date(comment.timestamp).toLocaleDateString()}
-                                    </span>
-                                  </div>
-                                  <p className="comment-text">{comment.content}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Add Comment */}
-                        <div className="add-comment">
-                          <div className="comment-avatar-small">
-                            {getUserAvatar(user)}
-                          </div>
-                          <input 
-                            type="text" 
-                            placeholder="Write a comment..." 
-                            className="comment-input"
-                            value={commentTexts[post._id] || ""}
-                            onChange={(e) => handleCommentChange(post._id, e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleAddComment(post._id)}
-                          />
-                          <button 
-                            className="comment-submit-btn"
-                            onClick={() => handleAddComment(post._id)}
-                            disabled={commentLoading[post._id] || !commentTexts[post._id]?.trim()}
-                          >
-                            {commentLoading[post._id] ? '...' : 'Post'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })
@@ -2421,7 +2543,7 @@ const handleSubmitReport = async () => {
         </div>
       </div>
 
-            {/* Report Modal - ADD THIS RIGHT HERE */}
+      {/* Report Modal */}
       {showReportModal && (
         <div className="report-modal-overlay" onClick={() => setShowReportModal(false)}>
           <div className="report-modal" onClick={(e) => e.stopPropagation()}>
@@ -2486,7 +2608,22 @@ const handleSubmitReport = async () => {
           </div>
         </div>
       )}
-      
+
+      {/* Post Modal */}
+      {postModalOpen && selectedPost && (
+        <PostModal
+          post={selectedPost}
+          currentUser={user}
+          users={allUsers}
+          onClose={closePostModal}
+          onAddComment={handleAddComment}
+          onEditComment={handleEditComment}
+          onDeleteComment={handleDeleteComment}
+          onLikeComment={handleLikeComment}
+          onLikePost={handleLike}
+        />
+      )}
+
       {/* Toast Component */}
       <Toast
         notification={toastData}
@@ -2497,8 +2634,6 @@ const handleSubmitReport = async () => {
           setShowNotifications(true);
         }}
       />
-
-      
     </div>
   );
 }
