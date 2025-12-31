@@ -20,7 +20,7 @@ function Network() {
   const [searchQuery, setSearchQuery] = useState("");
   const [connectionHistory, setConnectionHistory] = useState([]);
   const [usersWithConnections, setUsersWithConnections] = useState([]);
-  const [graphTimeframe, setGraphTimeframe] = useState("all"); // "7days", "30days", "90days", "all"
+  const [graphTimeframe, setGraphTimeframe] = useState("all");
   
   // Modal states
   const [showNetworkGrowthModal, setShowNetworkGrowthModal] = useState(false);
@@ -32,7 +32,7 @@ function Network() {
   const token = localStorage.getItem("token");
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
-  // 🔵 ENHANCED LINE CHART COMPONENT
+  // 🔵 LINE CHART COMPONENT
   const LineChart = ({ data, maxValue, height = 220, color = "#4f46e5" }) => {
     if (!data || data.length === 0) return null;
     
@@ -57,7 +57,6 @@ function Network() {
         </div>
         <div className="chart-lines">
           <svg className="chart-svg" width="100%" height="100%" preserveAspectRatio="none">
-            {/* Area under line */}
             <polygon
               points={areaPoints}
               fill={`url(#gradient-${color.replace('#', '')})`}
@@ -71,7 +70,6 @@ function Network() {
               </linearGradient>
             </defs>
             
-            {/* Main line */}
             <polyline
               points={points}
               fill="none"
@@ -81,7 +79,6 @@ function Network() {
               strokeLinejoin="round"
             />
             
-            {/* Data points with interaction */}
             {data.map((item, index) => {
               const x = (index / (data.length - 1)) * 100;
               const y = ((maxValue - item.value) / maxValue) * 100;
@@ -126,7 +123,6 @@ function Network() {
             })}
           </svg>
           
-          {/* X-axis labels */}
           <div className="x-axis-labels">
             {data.map((item, index) => (
               <div key={index} className="x-label">
@@ -154,7 +150,6 @@ function Network() {
       setConnectionHistory(res.data?.history || []);
     } catch (err) {
       console.error("Error fetching connection history:", err);
-      // Fallback: Generate initial history from current connections
       const fallbackHistory = connections.map(conn => ({
         type: 'connected',
         date: conn.connectedAt || conn.createdAt || new Date().toISOString(),
@@ -175,11 +170,10 @@ function Network() {
     }
   };
 
-  // 🔵 DATA PROCESSING FUNCTIONS - ENHANCED FOR REAL-TIME TRACKING
+  // 🔵 DATA PROCESSING FUNCTIONS
   const processHistoricalData = (history) => {
     if (!history || history.length === 0) return [];
     
-    // Sort events by date
     const sortedEvents = [...history].sort((a, b) => 
       new Date(a.date) - new Date(b.date)
     );
@@ -201,13 +195,11 @@ function Network() {
           365;
     }
     
-    // Generate date array based on timeframe
     const dateArray = [];
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - timeframeDays + 1);
     
-    // Initialize daily data
     const dailyData = {};
     let currentDate = new Date(startDate);
     
@@ -230,7 +222,6 @@ function Network() {
       currentDate.setDate(currentDate.getDate() + 1);
     }
     
-    // Process each event
     sortedEvents.forEach(event => {
       const eventDate = new Date(event.date);
       const dateStr = eventDate.toISOString().split('T')[0];
@@ -252,7 +243,6 @@ function Network() {
       }
     });
     
-    // Convert to array and calculate cumulative totals
     const dataArray = Object.values(dailyData).sort((a, b) => a.date - b.date);
     
     let cumulativeTotal = 0;
@@ -281,18 +271,14 @@ function Network() {
     );
   };
 
-  // 🔵 NETWORK INSIGHTS (REAL-TIME)
-
+  // 🔵 NETWORK INSIGHTS
   const networkInsights = useMemo(() => {
-    // Process historical data
     const historicalData = processHistoricalData(connectionHistory);
     
-    // Calculate statistics
     const totalConnections = connections.length;
     const pendingRequests = incoming.length;
     const sentRequests = outgoing.length;
     
-    // Growth metrics
     let dailyChange = 0;
     let weeklyChange = 0;
     let monthlyChange = 0;
@@ -303,17 +289,14 @@ function Network() {
       const today = historicalData[historicalData.length - 1];
       dailyChange = today.rawCount || 0;
       
-      // Weekly change (last 7 days)
       if (historicalData.length >= 7) {
         weeklyChange = historicalData.slice(-7).reduce((sum, day) => sum + day.rawCount, 0);
       }
       
-      // Monthly change (last 30 days)
       if (historicalData.length >= 30) {
         monthlyChange = historicalData.slice(-30).reduce((sum, day) => sum + day.rawCount, 0);
       }
       
-      // Growth streak
       let streak = 0;
       for (let i = 1; i < historicalData.length; i++) {
         if (historicalData[i].value > historicalData[i-1].value) {
@@ -325,14 +308,12 @@ function Network() {
       currentStreak = streak;
     }
     
-    // Calculate max value for graph
     const maxHistoricalValue = Math.max(
       ...historicalData.map(d => d.value),
       totalConnections,
       1
     );
     
-    // Additional insights
     const alumniConnections = connections.filter(c => {
       const roleLower = c.role?.toLowerCase() || '';
       const companyLower = c.company?.toLowerCase() || '';
@@ -428,7 +409,6 @@ function Network() {
   }, [graphTimeframe]);
 
   useEffect(() => {
-    // Filter users based on current state
     const availableUsers = users.filter(u => 
       u._id !== user?._id &&
       !connections.some(c => c._id === u._id) && 
@@ -563,7 +543,6 @@ function Network() {
       
       await axios.post(`http://localhost:5000/api/network/${endpoint}/${id}`, {}, authHeader);
       
-      // Record history for real data tracking
       const eventType = isRemoval ? 'disconnected' : 
                       isConnection ? 'connected' : null;
       
@@ -576,10 +555,8 @@ function Network() {
           userData: userData || null
         };
         
-        // Update local history immediately
         setConnectionHistory(prev => [...prev, historyEvent]);
         
-        // Save to backend
         try {
           await axios.post("http://localhost:5000/api/network/history/record", 
             historyEvent, 
@@ -590,14 +567,12 @@ function Network() {
         }
       }
       
-      // Refresh all data
       fetchAllData();
       
     } catch (err) {
       alert(err.response?.data?.message || "Error processing request");
     }
   };
-
 
   const exportConnections = () => {
     const csvHeaders = "Name,Role,Department,Email,Company,Skills,Connection Date,Connection Type\n";
@@ -623,9 +598,7 @@ function Network() {
     alert(`${connectionHistory.length} historical events exported successfully!`);
   };
 
-  // =========================
   // 🔵 HELPER FUNCTIONS
-  // =========================
   const clearFilter = () => {
     setQuickActionFilter(null);
     setSearchQuery("");
@@ -656,6 +629,7 @@ function Network() {
   const handleTimeframeChange = (timeframe) => {
     setGraphTimeframe(timeframe);
   };
+
   // 🔵 RENDER FUNCTIONS
   if (loading && !user) {
     return (
@@ -689,13 +663,89 @@ function Network() {
   };
 
   const activeContent = getActiveContent();
+
+  // 🔵 HANDLE LOGOUT
+  const handleLogout = () => {
+    localStorage.clear();
+    navigate("/login");
+  };
+
+  // 🔵 NOTIFICATION HANDLER
+  const handleClickNotification = () => {
+    navigate("/notifications");
+  };
   
-  // 🔵 MAIN RENDER
   return (
     <div className={`network-page ${darkMode ? 'dark-mode' : ''}`}>
       
+      {/* 🔵 HEADER - UPDATED TO MATCH FEED PAGE NAVBAR */}
+      <header className="feed-header network-feed-header">
+        <div className="header-left">
+          <div className="logo" onClick={() => navigate("/feed")}>💼 CampusConnect</div>
+          
+          {/* SEARCH BAR */}
+          <div className="feed-search-wrapper">
+            <ExploreSearch onUserSelect={(selectedUser) => selectedUser?._id && navigate(`/profile/${selectedUser._id}`)} />
+          </div>
+
+          <div className="nav-items">
+            <button className="nav-btn" onClick={() => navigate("/feed")}>🏠 Feed</button>
+            <button className="nav-btn" onClick={() => navigate("/profile")}>👤 Profile</button>
+            <button className="nav-btn active" onClick={() => navigate("/network")}>👥 Network</button>
+            <button className="nav-btn" onClick={() => navigate("/Explore")}>🌍 Explore</button>
+            <button 
+              className={`nav-btn notification-bell-btn`}
+              onClick={handleClickNotification}
+              title="Notifications"
+            >
+              🔔 Notifications
+              {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
+            </button>
+          </div>
+        </div>
+        <div className="header-right">
+          <div className="user-info">
+            <span className="user-name">Welcome, {user?.name || "User"}</span>
+            <div 
+              className="user-avatar" 
+              title="View Profile"
+              onClick={() => navigate("/profile")}
+            >
+              {getUserAvatar(user)}
+            </div>
+          </div>
+          
+          {user?.role === 'admin' && (
+            <button 
+              className="admin-btn"
+              onClick={() => navigate("/admin")}
+              style={{
+                background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                color: 'white',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px',
+                marginRight: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
+              onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
+            >
+              👑 Admin
+            </button>
+          )}
+          
+          <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
+        </div>
+      </header>
+
       {/* 📊 NETWORK GROWTH MODAL */}
-      
       {showNetworkGrowthModal && (
         <div className="modal-overlay" onClick={() => setShowNetworkGrowthModal(false)}>
           <div className="modal-content analytics-modal" onClick={e => e.stopPropagation()}>
@@ -713,7 +763,6 @@ function Network() {
             
             <div className="modal-body">
               <div className="analytics-summary">
-                {/* Timeframe Selector */}
                 <div className="timeframe-selector">
                   <h4>View Timeframe:</h4>
                   <div className="timeframe-buttons">
@@ -734,7 +783,6 @@ function Network() {
                   </div>
                 </div>
                 
-                {/* Key Metrics */}
                 <div className="summary-stats">
                   <div className="stat-item">
                     <div className="stat-value">{networkInsights.networkGrowth.total}</div>
@@ -758,7 +806,6 @@ function Network() {
                   </div>
                 </div>
                 
-                {/* Historical Growth Chart */}
                 <div className="growth-chart">
                   <h4>📈 Network Growth Timeline</h4>
                   <div className="data-real-notice">
@@ -785,7 +832,6 @@ function Network() {
                   </div>
                 </div>
                 
-                {/* Event History */}
                 {networkInsights.historicalStats.totalEvents > 0 && (
                   <div className="event-history">
                     <h4>📝 Recent Network Activity</h4>
@@ -820,7 +866,6 @@ function Network() {
                   </div>
                 )}
                 
-                {/* Statistics Summary */}
                 <div className="stats-summary">
                   <div className="stat-card-mini">
                     <div className="stat-mini-value">{networkInsights.historicalStats.connectionEvents}</div>
@@ -987,6 +1032,7 @@ function Network() {
           </div>
         </div>
       )}
+      
       {/* 🔵 ALUMNI NETWORK MODAL */}
       {showAlumniNetworkModal && (
         <div className="modal-overlay" onClick={() => setShowAlumniNetworkModal(false)}>
@@ -1052,56 +1098,7 @@ function Network() {
         </div>
       )}
 
-      {/* 🔵 HEADER */}
-      <header className="network-header">
-        <div className="header-content">
-          <div className="header-left">
-            <div className="logo" onClick={() => navigate("/feed")}>
-              <span className="logo-icon">💼</span>
-              <span className="logo-text">SWISH</span>
-            </div>
-            <div className="nav-menu">
-              {[["🏠", "Feed", "/feed"], ["👤", "Profile", "/profile"], ["👥", "Network", null], ["🌍", "Explore", "/Explore"]].map(([icon, label, path]) => (
-                <button key={label} className={`nav-btn ${!path ? 'active' : ''}`} onClick={() => path && navigate(path)}>
-                  <span className="nav-icon">{icon}</span>
-                  <span className="nav-label">{label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="header-center">
-            <ExploreSearch onUserSelect={(selectedUser) => selectedUser?._id && navigate(`/profile/${selectedUser._id}`)} />
-          </div>
-          <div className="header-right">
-            <button className="notification-btn" onClick={() => navigate("/notifications")}>
-              <span className="notification-icon">🔔</span>
-              {notifCount > 0 && <span className="notification-count">{notifCount}</span>}
-            </button>
-            <div className="user-menu">
-              <div className="user-info" onClick={() => navigate("/profile")}>
-                <div className="user-avatar">{getUserAvatar(user)}</div>
-                <div className="user-details">
-                  <span className="user-name">{user?.name || "User"}</span>
-                  <span className="user-role">{user?.role || "Student"}</span>
-                </div>
-              </div>
-              <div className="dropdown-menu">
-                {user?.role === 'admin' && (
-                  <button className="dropdown-item" onClick={() => navigate("/admin")}>
-                    <span className="item-icon">👑</span> Admin Panel
-                  </button>
-                )}
-                <button className="dropdown-item logout-btn" onClick={() => { localStorage.clear(); navigate("/login"); }}>
-                  <span className="item-icon">🚪</span> Logout
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* 🔵 MAIN CONTENT */}
-      
       <main className="network-main">
         <div className="network-hero">
           <div className="hero-content">
@@ -1190,26 +1187,22 @@ function Network() {
                     return (
                       <div key={user._id} className="user-card">
                         <div className="user-card-header">
-                          <img src={user.profilePhoto || "https://via.placeholder.com/80"} alt={user.name} className="user-avatar" />
-                          <div className="user-info">
+                          <div className="avatar-container">
+                            <img src={user.profilePhoto || "https://via.placeholder.com/80"} alt={user.name} className="user-avatar" />
+                          </div>
+                          <div className="linkedin-details">
                             <h3 className="user-name">{user.name}</h3>
                             <p className="user-role">{user.role}</p>
                             <p className="user-department">{user.department || "No department"}</p>
                             {user.company && <p className="user-company">{user.company}</p>}
+                            {mutualCount > 0 && (
+                              <div className="mutual-connections-badge">
+                                <span className="mutual-icon">🤝</span>
+                                <span className="mutual-count">{mutualCount} mutual connection{mutualCount !== 1 ? 's' : ''}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                        {mutualCount > 0 && (
-                          <div className="mutual-connections-badge">
-                            <span className="mutual-icon">🤝</span>
-                            <span className="mutual-count">{mutualCount} mutual connection{mutualCount !== 1 ? 's' : ''}</span>
-                          </div>
-                        )}
-                        {user.bio && <p className="user-bio">{user.bio.length > 100 ? `${user.bio.substring(0, 100)}...` : user.bio}</p>}
-                        {user.skills?.length > 0 && (
-                          <div className="user-skills">
-                            {user.skills.slice(0, 3).map((skill, idx) => <span key={idx} className="skill-tag">{skill}</span>)}
-                          </div>
-                        )}
                         <button 
                           className="connect-btn" 
                           onClick={() => handleNetworkAction("request", user._id, user.name, user)}
@@ -1241,7 +1234,9 @@ function Network() {
                 <div className="requests-list">
                   {activeContent.map(request => (
                     <div key={request._id} className="request-card">
-                      <img src={request.profilePhoto || "https://via.placeholder.com/60"} alt={request.name} className="request-avatar" />
+                      <div className="avatar-container">
+                        <img src={request.profilePhoto || "https://via.placeholder.com/60"} alt={request.name} className="request-avatar" />
+                      </div>
                       <div className="request-info">
                         <h3 className="request-name">{request.name}</h3>
                         <p className="request-details">{request.role} • {request.department || "No department"}</p>
@@ -1285,7 +1280,9 @@ function Network() {
                 <div className="sent-list">
                   {activeContent.map(request => (
                     <div key={request._id} className="sent-card">
-                      <img src={request.profilePhoto || "https://via.placeholder.com/60"} alt={request.name} className="sent-avatar" />
+                      <div className="avatar-container">
+                        <img src={request.profilePhoto || "https://via.placeholder.com/60"} alt={request.name} className="sent-avatar" />
+                      </div>
                       <div className="sent-info">
                         <h3 className="sent-name">{request.name}</h3>
                         <p className="sent-details">{request.role} • {request.department || "No department"}</p>
@@ -1333,11 +1330,12 @@ function Network() {
                 <div className="connections-grid">
                   {activeContent.map(connection => {
                     const connectionDateDisplay = getConnectionDateDisplay(connection);
-                    const connectionDate = connection.connectedAt || connection.createdAt;
                     
                     return (
                       <div key={connection._id} className="connection-card">
-                        <img src={connection.profilePhoto || "https://via.placeholder.com/80"} alt={connection.name} className="connection-avatar" />
+                        <div className="connection-avatar-container">
+                          <img src={connection.profilePhoto || "https://via.placeholder.com/80"} alt={connection.name} className="connection-avatar" />
+                        </div>
                         <div className="connection-info">
                           <h3 className="connection-name">{connection.name}</h3>
                           <p className="connection-role">{connection.role}</p>
@@ -1346,25 +1344,35 @@ function Network() {
                           {connectionDateDisplay && (
                             <div className="connection-date">
                               <span className="date-icon">📅</span>
-                              <span className="date-text">{connectionDateDisplay}</span>
+                              <span className="date-text">Connected {connectionDateDisplay}</span>
                             </div>
                           )}
                           {connection.skills?.length > 0 && (
                             <div className="connection-skills">
-                              {connection.skills.slice(0, 3).map((skill, idx) => <span key={idx} className="skill-tag">{skill}</span>)}
+                              {connection.skills.slice(0, 3).map((skill, idx) => 
+                                <span key={idx} className="skill-tag">{skill}</span>
+                              )}
                             </div>
                           )}
                         </div>
-                        <button 
-                          className="remove-btn" 
-                          onClick={() => {
-                            if (window.confirm(`Remove ${connection.name} from your connections?`)) {
-                              handleNetworkAction("remove", connection._id, connection.name, connection);
-                            }
-                          }}
-                        >
-                          Remove
-                        </button>
+                        <div className="connection-actions">
+                          <button 
+                            className="message-btn"
+                            onClick={() => navigate(`/messages?user=${connection._id}`)}
+                          >
+                            <span className="message-icon">💬</span> Message
+                          </button>
+                          <button 
+                            className="remove-btn" 
+                            onClick={() => {
+                              if (window.confirm(`Remove ${connection.name} from your connections?`)) {
+                                handleNetworkAction("remove", connection._id, connection.name, connection);
+                              }
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -1382,6 +1390,7 @@ function Network() {
               ["📈", "Network Growth", `${networkInsights.networkGrowth.total} connections`, () => setShowNetworkGrowthModal(true)],
               ["🎯", "Common Fields", networkInsights.commonFields.topDepartment, () => setShowCommonFieldsModal(true)],
               ["🔧", "Top Shared Skills", networkInsights.topSkills.topSkill, () => setShowTopSkillsModal(true)],
+              ["👥", "Alumni Network", `${networkInsights.alumniNetwork.count} alumni`, () => setShowAlumniNetworkModal(true)],
             ].map(([icon, title, value, onClick], idx) => (
               <div key={idx} className="insight-item clickable" onClick={onClick}>
                 <span className="insight-icon">{icon}</span>
@@ -1392,37 +1401,6 @@ function Network() {
                 <span className="insight-arrow">→</span>
               </div>
             ))}
-          </div>
-
-          
-          <div className="sidebar-section">
-            <h3>Growth Summary</h3>
-            <div className="growth-summary">
-              <div className="growth-item">
-                <span className="growth-label">Today's Change:</span>
-                <span className={`growth-value ${networkInsights.networkGrowth.dailyChange > 0 ? 'positive' : networkInsights.networkGrowth.dailyChange < 0 ? 'negative' : ''}`}>
-                  {networkInsights.networkGrowth.dailyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.dailyChange}
-                </span>
-              </div>
-              <div className="growth-item">
-                <span className="growth-label">Weekly Change:</span>
-                <span className={`growth-value ${networkInsights.networkGrowth.weeklyChange > 0 ? 'positive' : networkInsights.networkGrowth.weeklyChange < 0 ? 'negative' : ''}`}>
-                  {networkInsights.networkGrowth.weeklyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.weeklyChange}
-                </span>
-              </div>
-              <div className="growth-item">
-                <span className="growth-label">Growth Streak:</span>
-                <span className="growth-value streak">
-                  {networkInsights.networkGrowth.currentStreak} days
-                </span>
-              </div>
-              <div className="growth-item">
-                <span className="growth-label">Total Events:</span>
-                <span className="growth-value">
-                  {networkInsights.historicalStats.totalEvents}
-                </span>
-              </div>
-            </div>
           </div>
         </aside>
       </main>
