@@ -1,4 +1,4 @@
-/* NETWORK.CSS - UPDATED WITH FEED-STYLE NAVBAR AND COMPLETE INSIGHT SECTION */
+/* NETWORK.CSS - UPDATED WITH FEED-STYLE NAVBAR, LINKEDIN-STYLE CONNECTIONS, AND COMPLETE INSIGHT SECTION */
 
 /* CSS VARIABLES & THEME SETUP */
 :root {
@@ -601,160 +601,150 @@
   color: var(--linkedin-blue-hover);
 }
 
-/* CONNECTIONS GRID CARDS */
-.connections-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
-}
+/* LINKEDIN-LIST STYLE CONNECTIONS (EXACT IMAGE MATCH) */
 
-.connection-card {
-  background: var(--linkedin-card-bg);
-  border: 1px solid var(--linkedin-border);
-  border-radius: 12px;
-  padding: 20px;
+.connections-grid {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* MAIN ROW */
+.connection-card {
+  display: flex;
   align-items: center;
-  text-align: center;
-  transition: all 0.3s ease;
-  position: relative;
+  justify-content: space-between;
+  height: 92px;               /* FIXED HEIGHT */
+  padding: 0 20px;
+  background: #111827;        /* Dark flat background */
+  border: 1px solid #374151;
+  border-radius: 10px;
+  transition: background 0.2s ease, border 0.2s ease;
 }
 
 .connection-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px var(--shadow-color);
-  border-color: var(--accent);
-  background: var(--bg-hover);
+  background: #0f172a;
+  border-color: #4b5563;
 }
 
-.connection-avatar-container {
-  margin-bottom: 16px;
-}
-
-.connection-card .connection-avatar {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid var(--border-color);
-  background: linear-gradient(135deg, var(--accent), var(--purple));
-}
-
-.connection-info {
-  width: 100%;
-  margin-bottom: 20px;
-}
-
-.connection-card .connection-name {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.connection-card .connection-role {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-
-.connection-card .connection-department {
-  font-size: 13px;
-  color: var(--text-tertiary);
-  margin-bottom: 4px;
-}
-
-.connection-card .connection-company {
-  font-size: 13px;
-  color: var(--text-tertiary);
-  margin-bottom: 12px;
-  font-weight: 500;
-}
-
-.connection-date {
+/* LEFT SIDE */
+.connection-left {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  margin-bottom: 16px;
-  padding: 6px 12px;
-  background: var(--bg-tertiary);
-  border-radius: 6px;
-  width: fit-content;
-  margin: 0 auto 16px;
+  gap: 14px;
 }
 
-.date-icon {
-  font-size: 12px;
+/* AVATAR */
+.connection-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  flex-shrink: 0;
 }
 
-.connection-skills {
+/* INFO */
+.connection-info {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
   justify-content: center;
-  margin-bottom: 20px;
+  gap: 4px;
 }
 
-.skill-tag {
-  padding: 4px 10px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-  border: 1px solid var(--border-color);
+.connection-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
 }
 
+.connection-role {
+  display: inline-block;
+  font-size: 13px;
+  color: #d1d5db;
+  background: #1f2933;
+  padding: 2px 10px;
+  border-radius: 14px;
+  width: fit-content;
+}
+
+.connection-department {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+/* REMOVE EXTRA DETAILS HEIGHT */
+.connection-company,
+.connection-date,
+.connection-skills {
+  display: none;
+}
+
+/* RIGHT SIDE */
 .connection-actions {
   display: flex;
-  gap: 10px;
-  width: 100%;
+  align-items: center;
 }
 
 .message-btn {
-  flex: 1;
-  padding: 10px 16px;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: 8px;
+  height: 36px;
+  padding: 0 20px;
+  border-radius: 18px;
+  background: transparent;
+  color: #3b82f6;
+  border: 1px solid #3b82f6;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  transition: all 0.2s ease;
 }
 
 .message-btn:hover {
-  background: var(--accent-hover);
-  transform: translateY(-2px);
+  background: rgba(59, 130, 246, 0.1);
 }
+/* REMOVE CONNECTION BUTTON – LINKEDIN STYLE */
 
 .remove-btn {
-  flex: 1;
-  padding: 10px 16px;
-  background: var(--danger-light);
-  color: var(--danger);
-  border: 1px solid var(--danger);
-  border-radius: 8px;
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 18px;
+  background: transparent;
+  color: #ef4444;             /* Soft red */
+  border: 1px solid #374151;  /* Neutral border */
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
+/* HOVER EFFECT */
 .remove-btn:hover {
-  background: var(--danger);
-  color: white;
-  transform: translateY(-2px);
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+
+
+/* MOBILE */
+@media (max-width: 768px) {
+  .connection-card {
+    height: auto;
+    padding: 14px;
+  }
+
+  .connection-left {
+    width: 100%;
+  }
+
+  .connection-actions {
+    margin-top: 10px;
+    width: 100%;
+  }
+
+  .message-btn {
+    width: 100%;
+  }
 }
 
 /* REQUESTS & SENT CARDS */
@@ -2393,7 +2383,9 @@
   }
   
   .connections-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
   
   .network-sidebar {

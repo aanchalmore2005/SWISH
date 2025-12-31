@@ -1333,27 +1333,31 @@ function Network() {
                     
                     return (
                       <div key={connection._id} className="connection-card">
-                        <div className="connection-avatar-container">
-                          <img src={connection.profilePhoto || "https://via.placeholder.com/80"} alt={connection.name} className="connection-avatar" />
-                        </div>
-                        <div className="connection-info">
-                          <h3 className="connection-name">{connection.name}</h3>
-                          <p className="connection-role">{connection.role}</p>
-                          <p className="connection-department">{connection.department || "No department"}</p>
-                          {connection.company && <p className="connection-company">{connection.company}</p>}
-                          {connectionDateDisplay && (
-                            <div className="connection-date">
-                              <span className="date-icon">📅</span>
-                              <span className="date-text">Connected {connectionDateDisplay}</span>
-                            </div>
-                          )}
-                          {connection.skills?.length > 0 && (
-                            <div className="connection-skills">
-                              {connection.skills.slice(0, 3).map((skill, idx) => 
-                                <span key={idx} className="skill-tag">{skill}</span>
-                              )}
-                            </div>
-                          )}
+                        <div className="connection-left">
+                          <img 
+                            src={connection.profilePhoto || "https://via.placeholder.com/80"} 
+                            alt={connection.name} 
+                            className="connection-avatar" 
+                          />
+                          <div className="connection-info">
+                            <div className="connection-name">{connection.name}</div>
+                            <div className="connection-role">{connection.role}</div>
+                            <div className="connection-department">{connection.department || "No department"}</div>
+                            {connection.company && <div className="connection-company">{connection.company}</div>}
+                            {connectionDateDisplay && (
+                              <div className="connection-date">
+                                <span className="date-icon">📅</span>
+                                <span className="date-text">Connected {connectionDateDisplay}</span>
+                              </div>
+                            )}
+                            {connection.skills?.length > 0 && (
+                              <div className="connection-skills">
+                                {connection.skills.slice(0, 3).map((skill, idx) => 
+                                  <span key={idx} className="skill-tag">{skill}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <div className="connection-actions">
                           <button 
