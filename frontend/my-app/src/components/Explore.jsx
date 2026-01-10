@@ -6,6 +6,376 @@ import Toast from "../components/Toast";
 import "../styles/Notifications.css";
 import ExploreSearch from "../components/ExploreSearch";
 
+// ==================== IMAGE CAROUSEL COMPONENT (FROM FEED) ====================
+const ImageCarousel = ({ images, videos }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState(null);
+  const [touchEndX, setTouchEndX] = useState(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  
+  const videoRefs = useRef([]);
+  const carouselRef = useRef(null);
+  const observerRef = useRef(null);
+  const videoIntervalRef = useRef(null);
+  const isInViewportRef = useRef(true);
+  const scrollTimeoutRef = useRef(null);
+
+  // Combine images and videos into media array
+  const media = [...(images || []), ...(videos || [])];
+  
+  if (!media || media.length === 0) return null;
+
+  const isVideo = (item) => item.type === 'video';
+  const totalSlides = media.length;
+
+  const handleVideoPlayPause = useCallback(() => {
+    const video = videoRefs.current[currentIndex];
+    if (!video) return;
+    
+    if (video.paused) {
+      video.play().then(() => {
+        setIsVideoPlaying(true);
+        startProgressInterval();
+      }).catch(e => console.log("Auto-play prevented:", e));
+    } else {
+      video.pause();
+      setIsVideoPlaying(false);
+      clearProgressInterval();
+    }
+  }, [currentIndex]);
+
+  const startProgressInterval = useCallback(() => {
+    if (videoIntervalRef.current) {
+      clearInterval(videoIntervalRef.current);
+    }
+    videoIntervalRef.current = setInterval(() => {
+      const video = videoRefs.current[currentIndex];
+      if (video && !video.paused && video.duration) {
+        const progress = (video.currentTime / video.duration) * 100;
+        setVideoProgress(progress);
+        setVideoCurrentTime(video.currentTime);
+      }
+    }, 100);
+  }, [currentIndex]);
+
+  const clearProgressInterval = useCallback(() => {
+    if (videoIntervalRef.current) {
+      clearInterval(videoIntervalRef.current);
+      videoIntervalRef.current = null;
+    }
+  }, []);
+
+  const formatTime = useCallback((seconds) => {
+    if (isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  const goToSlide = useCallback((index) => {
+    if (isVideo(media[currentIndex])) {
+      const video = videoRefs.current[currentIndex];
+      if (video) {
+        video.pause();
+        setIsVideoPlaying(false);
+        clearProgressInterval();
+      }
+    }
+    
+    setCurrentIndex(index);
+    setVideoProgress(0);
+    setVideoCurrentTime(0);
+    setVideoDuration(0);
+    
+    if (isVideo(media[index]) && isInViewportRef.current) {
+      setTimeout(() => {
+        const video = videoRefs.current[index];
+        if (video) {
+          video.muted = false;
+          setIsMuted(false);
+          video.play().then(() => {
+            setIsVideoPlaying(true);
+            startProgressInterval();
+          }).catch(e => console.log("Auto-play prevented:", e));
+        }
+      }, 100);
+    }
+  }, [currentIndex, media, clearProgressInterval, startProgressInterval]);
+
+  const nextSlide = useCallback(() => {
+    goToSlide(currentIndex === totalSlides - 1 ? 0 : currentIndex + 1);
+  }, [currentIndex, totalSlides, goToSlide]);
+
+  const prevSlide = useCallback(() => {
+    goToSlide(currentIndex === 0 ? totalSlides - 1 : currentIndex - 1);
+  }, [currentIndex, totalSlides, goToSlide]);
+
+  const handleTouchStart = (e) => {
+    setTouchStartX(e.touches[0].clientX);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEndX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX || !touchEndX) return;
+    
+    const distance = touchStartX - touchEndX;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+
+    if (isLeftSwipe) {
+      nextSlide();
+    } else if (isRightSwipe) {
+      prevSlide();
+    }
+
+    setTouchStartX(null);
+    setTouchEndX(null);
+  };
+
+  const handleVideoPlay = useCallback(() => {
+    setIsVideoPlaying(true);
+    startProgressInterval();
+  }, [startProgressInterval]);
+
+  const handleVideoPause = useCallback(() => {
+    setIsVideoPlaying(false);
+    clearProgressInterval();
+  }, [clearProgressInterval]);
+
+  const handleVideoEnded = useCallback(() => {
+    setIsVideoPlaying(false);
+    setVideoProgress(0);
+    setVideoCurrentTime(0);
+    clearProgressInterval();
+  }, [clearProgressInterval]);
+
+  const handleVideoLoadedMetadata = useCallback((e) => {
+    const video = e.target;
+    if (video) {
+      setVideoDuration(video.duration);
+      setVideoCurrentTime(0);
+      setVideoProgress(0);
+    }
+  }, []);
+
+  const handleVideoTimeUpdate = useCallback((e) => {
+    const video = e.target;
+    if (video && video.duration) {
+      const progress = (video.currentTime / video.duration) * 100;
+      setVideoProgress(progress);
+      setVideoCurrentTime(video.currentTime);
+    }
+  }, []);
+
+  const handleProgressChange = (e) => {
+    const value = parseFloat(e.target.value);
+    const video = videoRefs.current[currentIndex];
+    if (video && video.duration) {
+      const newTime = (value / 100) * video.duration;
+      video.currentTime = newTime;
+      setVideoProgress(value);
+      setVideoCurrentTime(newTime);
+    }
+  };
+
+  const handleToggleMute = () => {
+    const video = videoRefs.current[currentIndex];
+    if (video) {
+      video.muted = !video.muted;
+      setIsMuted(video.muted);
+    }
+  };
+
+  useEffect(() => {
+    if (!carouselRef.current) return;
+
+    const handleIntersection = (entries) => {
+      entries.forEach((entry) => {
+        isInViewportRef.current = entry.isIntersecting;
+        
+        if (!entry.isIntersecting && isVideo(media[currentIndex])) {
+          const video = videoRefs.current[currentIndex];
+          if (video && !video.paused) {
+            video.pause();
+            setIsVideoPlaying(false);
+            clearProgressInterval();
+          }
+        }
+      });
+    };
+
+    observerRef.current = new IntersectionObserver(handleIntersection, {
+      threshold: 0.3,
+      rootMargin: '50px'
+    });
+
+    observerRef.current.observe(carouselRef.current);
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [currentIndex, media, clearProgressInterval]);
+
+  useEffect(() => {
+    return () => {
+      videoRefs.current.forEach(video => {
+        if (video) {
+          video.pause();
+          video.src = '';
+          video.load();
+        }
+      });
+      clearProgressInterval();
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [clearProgressInterval]);
+
+  return (
+    <div className="linkedin-carousel" ref={carouselRef}>
+      <div 
+        className="carousel-container"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {totalSlides > 1 && (
+          <button 
+            className="carousel-arrow left-arrow"
+            onClick={prevSlide}
+            aria-label="Previous"
+          >
+            ‹
+          </button>
+        )}
+
+        <div className="carousel-slide">
+          {isVideo(media[currentIndex]) ? (
+            <div className="video-slide">
+              <video
+                ref={el => {
+                  videoRefs.current[currentIndex] = el;
+                  if (el) {
+                    el.onplay = handleVideoPlay;
+                    el.onpause = handleVideoPause;
+                    el.onended = handleVideoEnded;
+                    el.ontimeupdate = handleVideoTimeUpdate;
+                    el.onloadedmetadata = handleVideoLoadedMetadata;
+                    el.muted = false;
+                    el.playsInline = true;
+                    el.preload = "metadata";
+                    el.controls = false;
+                  }
+                }}
+                src={media[currentIndex].url}
+                className="carousel-video"
+                playsInline
+                preload="metadata"
+              />
+              
+              <div className="carousel-video-controls">
+                <button 
+                  className="video-control-btn play-pause-btn"
+                  onClick={handleVideoPlayPause}
+                  aria-label={isVideoPlaying ? "Pause" : "Play"}
+                >
+                  {isVideoPlaying ? '⏸' : '▶'}
+                </button>
+                
+                <div className="video-time-display">
+                  {formatTime(videoCurrentTime)} / {formatTime(videoDuration)}
+                </div>
+                
+                <div className="video-progress-container">
+                  <input
+                    type="range"
+                    className="video-progress-slider"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={videoProgress}
+                    onChange={handleProgressChange}
+                    aria-label="Video progress"
+                  />
+                </div>
+                
+                <button 
+                  className="video-control-btn mute-btn"
+                  onClick={handleToggleMute}
+                  aria-label={isMuted ? "Unmute" : "Mute"}
+                >
+                  {isMuted ? '🔇' : '🔊'}
+                </button>
+              </div>
+              
+              {!isVideoPlaying && (
+                <div className="video-play-overlay">
+                  <button 
+                    className="video-play-button"
+                    onClick={handleVideoPlayPause}
+                    aria-label="Play video"
+                  >
+                    ▶
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <img
+              src={media[currentIndex].url}
+              alt={`Slide ${currentIndex + 1}`}
+              className="carousel-image"
+              loading="lazy"
+            />
+          )}
+        </div>
+
+        {totalSlides > 1 && (
+          <button 
+            className="carousel-arrow right-arrow"
+            onClick={nextSlide}
+            aria-label="Next"
+          >
+            ›
+          </button>
+        )}
+
+        {totalSlides > 1 && (
+          <div className="image-counter">
+            {currentIndex + 1} / {totalSlides}
+          </div>
+        )}
+      </div>
+
+      {totalSlides > 1 && (
+        <div className="carousel-dots">
+          {media.map((_, index) => (
+            <button
+              key={index}
+              className={`carousel-dot ${index === currentIndex ? 'active' : ''}`}
+              onClick={() => goToSlide(index)}
+              aria-label={`Go to slide ${index + 1}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Post Card Component (Reusable) - Wrapped with forwardRef
 const PostCard = forwardRef(({ post, user, onLike, onComment, onSave, onFollow, isFollowing }, ref) => {
   const [showComments, setShowComments] = useState(false);
@@ -14,7 +384,6 @@ const PostCard = forwardRef(({ post, user, onLike, onComment, onSave, onFollow, 
   
   const navigate = useNavigate();
   
-  // Safely check if user liked or saved the post
   const isLiked = post.likes?.some(like => 
     (typeof like === 'object' ? like._id || like : like) === user?.id
   ) || false;
@@ -72,11 +441,8 @@ const PostCard = forwardRef(({ post, user, onLike, onComment, onSave, onFollow, 
     return num.toString();
   };
   
-  // Get likes count safely
   const likesCount = Array.isArray(post.likes) ? post.likes.length : 0;
-  // Get comments count safely
   const commentsCount = Array.isArray(post.comments) ? post.comments.length : 0;
-  // Get saves count safely
   const savesCount = Array.isArray(post.saves) ? post.saves.length : 0;
   
   return (
@@ -134,7 +500,7 @@ const PostCard = forwardRef(({ post, user, onLike, onComment, onSave, onFollow, 
       <div className="post-content">
         <p>{post.content}</p>
         
-        {/* Hashtags - extract from content */}
+        {/* Hashtags */}
         {post.content && post.content.includes('#') && (
           <div className="hashtags">
             {post.content.match(/#\w+/g)?.map((tag, index) => (
@@ -145,17 +511,12 @@ const PostCard = forwardRef(({ post, user, onLike, onComment, onSave, onFollow, 
           </div>
         )}
         
-        {/* Media */}
+        {/* Media with Carousel */}
         {post.media && post.media.length > 0 && (
-          <div className="post-media">
-            {post.media.map((media, index) => (
-              media.type === 'image' ? (
-                <img key={index} src={media.url} alt={`Post media ${index}`} className="post-media-item" />
-              ) : media.type === 'video' ? (
-                <video key={index} src={media.url} controls className="post-media-item" />
-              ) : null
-            ))}
-          </div>
+          <ImageCarousel 
+            images={post.media.filter(m => m.type === 'image')} 
+            videos={post.media.filter(m => m.type === 'video')} 
+          />
         )}
         
         {/* Category */}
@@ -168,19 +529,11 @@ const PostCard = forwardRef(({ post, user, onLike, onComment, onSave, onFollow, 
       
       {/* Post Stats */}
       <div className="post-stats">
-        <span className="stat-item">
-          👍 {formatNumber(likesCount)}
-        </span>
-        <span className="stat-item">
-          💬 {formatNumber(commentsCount)}
-        </span>
-        <span className="stat-item">
-          💾 {formatNumber(savesCount)}
-        </span>
+        <span className="stat-item">👍 {formatNumber(likesCount)}</span>
+        <span className="stat-item">💬 {formatNumber(commentsCount)}</span>
+        <span className="stat-item">💾 {formatNumber(savesCount)}</span>
         {post.tags && post.tags.length > 0 && (
-          <span className="stat-item">
-            # {post.tags.length}
-          </span>
+          <span className="stat-item"># {post.tags.length}</span>
         )}
       </div>
       
@@ -190,7 +543,7 @@ const PostCard = forwardRef(({ post, user, onLike, onComment, onSave, onFollow, 
           className={`action-btn like-btn ${isLiked ? 'liked' : ''}`}
           onClick={handleLike}
         >
-          {isLiked ? '👍 Liked' : '🤍 Like'}
+          {isLiked ? '❤️ Liked' : '🤍 Like'}
         </button>
         <button 
           className={`action-btn comment-btn ${showComments ? 'active' : ''}`}
@@ -223,7 +576,6 @@ const PostCard = forwardRef(({ post, user, onLike, onComment, onSave, onFollow, 
       {/* Comments Section */}
       {showComments && (
         <div className="comments-section">
-          {/* Existing Comments */}
           {post.comments && post.comments.length > 0 ? (
             <div className="comments-list">
               <h4>Comments ({commentsCount})</h4>
@@ -312,7 +664,6 @@ const UserCard = ({ userData, currentUser, onFollow, isFollowing }) => {
     return num.toString();
   };
   
-  // Safely get counts
   const followersCount = Array.isArray(userData.followers) ? userData.followers.length : 0;
   const connectionsCount = Array.isArray(userData.connections) ? userData.connections.length : 0;
   
@@ -373,7 +724,7 @@ const HashtagCard = ({ tag, count, onClick }) => {
 
 function Explore() {
   const [activeTab, setActiveTab] = useState('trending');
-  const [timeFilter, setTimeFilter] = useState('week'); // Changed default to 'week'
+  const [timeFilter, setTimeFilter] = useState('week');
   const [mediaFilter, setMediaFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -427,7 +778,7 @@ function Explore() {
     };
   }, [navigate]);
   
-  // Fetch trending posts - FIXED
+  // Fetch trending posts
   const fetchTrendingPosts = useCallback(async () => {
     if (!user) return;
     
@@ -463,7 +814,7 @@ function Explore() {
     }
   }, [user, timeFilter, navigate]);
   
-  // Fetch latest posts - FIXED
+  // Fetch latest posts
   const fetchLatestPosts = useCallback(async () => {
     if (!user) return;
     
@@ -497,7 +848,7 @@ function Explore() {
     }
   }, [user]);
   
-  // Fetch posts by category - FIXED
+  // Fetch posts by category
   const fetchCategoryPosts = useCallback(async () => {
     if (!user || categoryFilter === 'all') return;
     
@@ -526,7 +877,7 @@ function Explore() {
     }
   }, [user, categoryFilter]);
   
-  // Fetch posts by media type - FIXED
+  // Fetch posts by media type
   const fetchMediaPosts = useCallback(async () => {
     if (!user || mediaFilter === 'all') return;
     
@@ -555,7 +906,7 @@ function Explore() {
     }
   }, [user, mediaFilter]);
   
-  // Fetch discover users - FIXED
+  // Fetch discover users
   const fetchDiscoverUsers = useCallback(async () => {
     if (!user) return;
     
@@ -586,7 +937,7 @@ function Explore() {
     }
   }, [user]);
   
-  // Fetch trending hashtags - FIXED
+  // Fetch trending hashtags
   const fetchTrendingHashtags = useCallback(async () => {
     if (!user) return;
     
@@ -610,7 +961,7 @@ function Explore() {
     }
   }, [user]);
   
-  // Search posts and users - FIXED
+  // Search posts and users
   const handleSearchFromNavbar = useCallback(async (query) => {
     if (!user || !query.trim()) return;
     
@@ -656,7 +1007,7 @@ function Explore() {
     };
   }, [handleSearchFromNavbar]);
   
-  // Handle like - FIXED
+  // Handle like
   const handleLike = async (postId) => {
     try {
       const token = localStorage.getItem('token');
@@ -691,7 +1042,7 @@ function Explore() {
     }
   };
   
-  // Handle save - TEMPORARY FIX (add this endpoint to server.js)
+  // Handle save
   const handleSave = async (postId) => {
     try {
       const token = localStorage.getItem('token');
@@ -716,7 +1067,7 @@ function Explore() {
     }
   };
   
-  // Handle follow - FIXED (using connection request instead of follow)
+  // Handle follow (using connection request instead of follow)
   const handleFollow = async (userId) => {
     try {
       const token = localStorage.getItem('token');
@@ -740,7 +1091,7 @@ function Explore() {
     }
   };
   
-  // Handle comment - FIXED
+  // Handle comment
   const handleComment = async (postId, content) => {
     try {
       const token = localStorage.getItem('token');
@@ -784,7 +1135,7 @@ function Explore() {
     }
   };
   
-  // Handle hashtag click - FIXED
+  // Handle hashtag click
   const handleHashtagClick = async (tag) => {
     setActiveTab('hashtag');
     const cleanTag = tag.startsWith('#') ? tag.substring(1) : tag;
@@ -1126,8 +1477,8 @@ function Explore() {
           )}
         </div>
         
-        {/* Main Content */}
-        <div className="explore-main">
+        {/* Main Content - CHANGED TO MAIN FEED (LIKE FEED.JSX) */}
+        <div className="main-feed">
           {/* Tabs */}
           <div className="explore-tabs">
             {[
@@ -1215,8 +1566,8 @@ function Explore() {
             )}
           </div>
           
-          {/* Posts Grid */}
-          <div className="posts-grid">
+          {/* Posts Feed - CHANGED FROM posts-grid to main-feed wrapper */}
+          <div className="explore-feed">
             {loading && pageRef.current === 1 ? (
               // Skeleton Loaders
               Array.from({ length: 6 }).map((_, index) => (
@@ -1278,7 +1629,7 @@ function Explore() {
                 )}
               </div>
             ) : getCurrentPosts().length > 0 ? (
-              // Regular Posts
+              // Regular Posts - ONE BELOW ANOTHER
               <>
                 {getCurrentPosts().map((post, index) => (
                   <PostCard
@@ -1330,7 +1681,7 @@ function Explore() {
                 </p>
                 {(activeTab !== 'search' && activeTab !== 'hashtag') && (
                   <button 
-                    className="create-post-btn"
+                    className="create-first-post-btn"
                     onClick={() => navigate("/feed")}
                   >
                     ✨ Create a Post
