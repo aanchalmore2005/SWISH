@@ -642,7 +642,7 @@ function Network() {
             <button className="nav-btn" onClick={() => navigate("/feed")}>🏠 Feed</button>
             <button className="nav-btn" onClick={() => navigate("/profile")}>👤 Profile</button>
             <button className="nav-btn active" onClick={() => navigate("/network")}>👥 Network</button>
-            <button className="nav-btn" onClick={() => navigate("/Explore")}>🌍 Explore</button>
+            <button className="nav-btn" onClick={() => navigate("/Explore")}>🔥 Explore</button>
             <button 
               className="nav-btn notification-bell-btn"
               onClick={handleClickNotification}
