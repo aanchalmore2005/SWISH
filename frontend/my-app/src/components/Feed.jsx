@@ -2048,14 +2048,15 @@ function Feed() {
               </p>
             </div>
             <div className="mini-stats">
-              <div className="stats-grid">
-                <div className="stat-item">
-                  <span className="stat-number">{posts.filter(p => p.user?.id === user.id).length}</span>
-                  <span className="stat-label">Posts</span>
+              {/* UPDATED: Changed to network tabs style */}
+              <div className="network-tabs-container" style={{ marginTop: '20px' }}>
+                <div className="network-tab-item active">
+                  <span className="network-tab-text">Posts</span>
+                  <span className="network-tab-badge">{posts.filter(p => p.user?.id === user.id).length}</span>
                 </div>
-                <div className="stat-item">
-                  <span className="stat-number">{posts.reduce((acc, post) => acc + (post.likes?.length || 0), 0)}</span>
-                  <span className="stat-label">Likes</span>
+                <div className="network-tab-item">
+                  <span className="network-tab-text">Likes</span>
+                  <span className="network-tab-badge">{posts.reduce((acc, post) => acc + (post.likes?.length || 0), 0)}</span>
                 </div>
               </div>
             </div>
@@ -2633,24 +2634,41 @@ function Feed() {
             </div>
           </div>
 
-          {/* Upcoming Events Sidebar */}
+          {/* Upcoming Events Sidebar - UPDATED: Changed to use network-suggestion-item */}
           {posts.filter(post => post.type === 'event' && post.event).length > 0 && (
             <div className="trending-card">
               <h3 className="sidebar-title">
                 <span>📅 Upcoming Events</span>
               </h3>
               
-              <div className="trending-list">
+              <div className="network-suggestions-list">
                 {posts
                   .filter(post => post.type === 'event' && post.event)
                   .slice(0, 3)
                   .map(post => {
                     const eventDate = new Date(post.event.dateTime);
                     return (
-                      <div key={post._id} className="trending-item" onClick={() => openPostModal(post)}>
-                        <div className="trending-info">
+                      <div 
+                        key={post._id} 
+                        className="network-suggestion-item" 
+                        onClick={() => {
+                          // Scroll to the post in the feed
+                          const element = document.getElementById(`post-${post._id}`);
+                          if (element) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            element.classList.add('notification-highlighted');
+                            setTimeout(() => {
+                              element.classList.remove('notification-highlighted');
+                            }, 3000);
+                          }
+                        }}
+                      >
+                        <div className="network-suggestion-avatar">
+                          {getUserAvatar(post.user)}
+                        </div>
+                        <div className="network-suggestion-info">
                           <h4>{post.event.title}</h4>
-                          <p className="trending-meta">
+                          <p className="network-suggestion-meta">
                             <span>📅 {eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                             <span>👥 {post.event.rsvpCount || 0} going</span>
                           </p>
@@ -2663,22 +2681,39 @@ function Feed() {
             </div>
           )}
 
-          {/* Active Polls Sidebar */}
+          {/* Active Polls Sidebar - UPDATED: Changed to use network-suggestion-item */}
           {posts.filter(post => post.type === 'poll' && post.poll).length > 0 && (
             <div className="suggestions-card">
               <h3 className="sidebar-title">
                 <span>📊 Active Polls</span>
               </h3>
               
-              <div className="suggestions-list">
+              <div className="network-suggestions-list">
                 {posts
                   .filter(post => post.type === 'poll' && post.poll)
                   .slice(0, 3)
                   .map(post => (
-                    <div key={post._id} className="suggestion-item" onClick={() => openPostModal(post)}>
-                      <div className="suggestion-info">
+                    <div 
+                      key={post._id} 
+                      className="network-suggestion-item"
+                      onClick={() => {
+                        // Scroll to the post in the feed
+                        const element = document.getElementById(`post-${post._id}`);
+                        if (element) {
+                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          element.classList.add('notification-highlighted');
+                          setTimeout(() => {
+                            element.classList.remove('notification-highlighted');
+                          }, 3000);
+                        }
+                      }}
+                    >
+                      <div className="network-suggestion-avatar">
+                        {getUserAvatar(post.user)}
+                      </div>
+                      <div className="network-suggestion-info">
                         <h4>{post.poll.question}</h4>
-                        <p className="suggestion-meta">
+                        <p className="network-suggestion-meta">
                           <span>{post.poll.totalVotes || 0} votes</span>
                           <span>{post.poll.options.length} options</span>
                         </p>
@@ -2758,21 +2793,21 @@ function Feed() {
         </div>
       )}
 
-      {/* Share Modal */}
+      {/* Share Modal - UPDATED: Increased width to match network modal */}
       {showShareModal && postToShare && (
-        <div className="modal-overlay" onClick={closeShareModal}>
-          <div className="connection-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className="network-modal-overlay" onClick={closeShareModal}>
+          <div className="network-analytics-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px' }}>
+            <div className="network-modal-header">
               <h3>Share Post</h3>
               <button 
-                className="close-share-btn" 
+                className="network-modal-close" 
                 onClick={closeShareModal}
               >
                 ×
               </button>
             </div>
             
-            <div className="share-content">
+            <div className="network-modal-body">
               <div className="share-post-preview">
                 <div className="share-post-header">
                   <div className="share-post-user">
@@ -2890,15 +2925,15 @@ function Feed() {
               </div>
             </div>
             
-            <div className="modal-actions">
+            <div className="network-modal-actions">
               <button 
-                className="modal-btn cancel" 
+                className="network-modal-btn cancel" 
                 onClick={closeShareModal}
               >
                 Cancel
               </button>
               <button 
-                className="modal-btn confirm"
+                className="network-modal-btn confirm"
                 onClick={handleSharePost}
                 disabled={selectedConnections.length === 0 || shareLoading}
               >
