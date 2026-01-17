@@ -11,7 +11,7 @@ import Connections from "./components/Connections";
 import "./styles/global.css";
 import ProfilePage from "./components/ProfilePage";
 import Explore from "./components/Explore";
-
+import Navbar from "./components/Navbar";
 function App() {
   return (
     <Router>
@@ -28,6 +28,7 @@ function App() {
         <Route path="/connections" element={<Connections />} />     
         <Route path="/profile/:userId" element={<ProfilePage />} />
         <Route path="/explore" element={<Explore />} />
+        <Route path="/navbar" element={<Navbar/>}/>
       </Routes>
     </Router>
   );

@@ -43,179 +43,16 @@
   margin: 0 auto;
   padding: 24px;
   min-height: calc(100vh - 70px);
+  padding-top: 94px; /* Added for navbar */
 }
 
-/* ========== HEADER - SPECIFIC TO NETWORK PAGE ========== */
-.network-header-bar {
-  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-  border-bottom: 1px solid var(--network-border);
-  padding: 0 24px;
-  height: 70px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.network-header-left {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.network-logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-weight: 900;
-  font-size: 1.6rem;
-  background: linear-gradient(to right, var(--network-lavender), var(--network-royal-blue));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  transition: var(--network-transition);
-}
-
-.network-logo:hover {
-  transform: scale(1.02);
-  filter: brightness(1.2);
-}
-
-.network-feed-search-wrapper {
-  width: 320px;
-}
-
-.network-nav-items {
-  display: flex;
-  gap: 2px;
-}
-
-.network-nav-btn {
-  background: transparent;
-  border: none;
-  color: var(--network-text-dim);
-  padding: 10px 16px;
-  border-radius: var(--network-radius);
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  transition: var(--network-transition);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.network-nav-btn:hover {
-  background: var(--network-elevated-2);
-  color: var(--network-lavender);
-  transform: translateY(-1px);
-}
-
-.network-nav-btn.active {
-  background: var(--network-elevated-2);
-  color: var(--network-lavender);
-  border: 1px solid var(--network-border);
-  box-shadow: var(--network-shadow);
-}
-
-.network-header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.network-admin-btn {
-  background: linear-gradient(135deg, var(--network-lavender), var(--network-royal-blue));
-  color: var(--network-black);
-  border: none;
-  padding: 6px 12px;
-  border-radius: var(--network-radius);
-  font-weight: 800;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.85rem;
-  transition: var(--network-transition);
-}
-
-.network-admin-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--network-shadow-purple);
-}
-
-.network-user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  border-radius: var(--network-radius);
-  cursor: pointer;
-  transition: var(--network-transition);
-}
-
-.network-user-info:hover {
-  background: var(--network-elevated-2);
-}
-
-.network-user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--network-lavender), var(--network-royal-blue));
-  color: var(--network-black);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: 800;
-  border: 2px solid var(--network-surface);
-  overflow: hidden;
-  transition: var(--network-transition);
-}
-
-.network-user-avatar:hover {
-  transform: scale(1.05);
-  border-color: var(--network-lavender);
-}
-
-.network-user-avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-}
-
-.network-logout-btn {
-  background: transparent;
-  border: 1px solid var(--network-border);
-  color: var(--network-text-dim);
-  padding: 8px 16px;
-  border-radius: var(--network-radius);
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  transition: var(--network-transition);
-}
-
-.network-logout-btn:hover {
-  background: var(--network-danger);
-  color: white;
-  border-color: var(--network-danger);
-  transform: translateY(-1px);
-}
+/* ========== REMOVED HEADER STYLES (Now in Navbar.css) ========== */
 
 /* ========== SIDEBARS ========== */
 .network-sidebar {
   position: sticky;
-  top: 90px;
-  height: calc(100vh - 110px);
+  top: 94px; /* Changed from 90px to account for navbar */
+  height: calc(100vh - 134px); /* Adjusted for navbar */
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--network-border) var(--network-surface);
@@ -438,8 +275,7 @@
 }
 
 /* ========== RIGHT SIDEBAR CARDS ========== */
-.network-analytics-card,
-.network-suggestions-card {
+.network-analytics-card {
   background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
   border: 1px solid var(--network-elevated-3);
   border-radius: var(--network-radius);
@@ -450,8 +286,7 @@
   box-shadow: var(--network-shadow);
 }
 
-.network-analytics-card::before,
-.network-suggestions-card::before {
+.network-analytics-card::before {
   content: '';
   position: absolute;
   top: 0;
@@ -460,10 +295,6 @@
   height: 100%;
   background: linear-gradient(180deg, var(--network-lavender), var(--network-royal-blue));
   border-radius: var(--network-radius) 0 0 var(--network-radius);
-}
-
-.network-suggestions-card::before {
-  background: linear-gradient(180deg, #10b981, var(--network-lavender));
 }
 
 .network-sidebar-title {
@@ -485,7 +316,7 @@
 /* ========== MAIN CONTENT ========== */
 .network-main-content {
   overflow-y: auto;
-  height: calc(100vh - 110px);
+  height: calc(100vh - 134px); /* Adjusted for navbar */
   scrollbar-width: thin;
   scrollbar-color: var(--network-border) var(--network-surface);
 }
@@ -1175,7 +1006,7 @@
 
 /* ========== LOADING STATES ========== */
 .network-loading-container {
-  height: 100vh;
+  height: calc(100vh - 70px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1426,6 +1257,19 @@
   background: linear-gradient(to right, var(--network-lavender), var(--network-royal-blue));
 }
 
+/* ========== AVATAR IMAGES ========== */
+.network-user-avatar-img,
+.network-mini-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.network-avatar-initial {
+  font-weight: 900;
+}
+
 /* ========== RESPONSIVE ========== */
 @media (max-width: 1200px) {
   .network-layout-container {
@@ -1442,22 +1286,11 @@
     grid-template-columns: 1fr;
     padding: 16px;
     gap: 16px;
+    padding-top: 86px; /* Adjusted for mobile */
   }
   
   .network-sidebar {
     display: none;
-  }
-  
-  .network-feed-search-wrapper {
-    display: none;
-  }
-  
-  .network-nav-text {
-    display: none;
-  }
-  
-  .network-nav-btn {
-    padding: 12px;
   }
   
   .network-content-title {
@@ -1479,35 +1312,8 @@
 }
 
 @media (max-width: 600px) {
-  .network-header-bar {
-    padding: 0 12px;
-  }
-  
-  .network-nav-items {
-    gap: 1px;
-  }
-  
-  .network-nav-btn {
-    padding: 8px;
-    font-size: 0.8rem;
-  }
-  
-  .network-user-avatar {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-  
-  .network-logout-btn span:last-child {
-    display: none;
-  }
-  
-  .network-logout-btn {
-    padding: 6px 10px;
-  }
-  
-  .network-modal-overlay {
-    padding: 16px;
+  .network-layout-container {
+    padding-top: 86px; /* Adjusted for mobile */
   }
   
   .network-user-card,

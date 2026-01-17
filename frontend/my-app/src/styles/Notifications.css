@@ -42,179 +42,16 @@
   margin: 0 auto;
   padding: 24px;
   min-height: calc(100vh - 70px);
+  padding-top: 94px; /* Added padding for fixed navbar */
 }
 
-/* ========== HEADER ========== */
-.notifications-header-bar {
-  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-  border-bottom: 1px solid var(--border);
-  padding: 0 24px;
-  height: 70px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-weight: 900;
-  font-size: 1.6rem;
-  background: linear-gradient(to right, var(--lavender), var(--royal-blue));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  transition: var(--transition);
-}
-
-.logo:hover {
-  transform: scale(1.02);
-  filter: brightness(1.2);
-}
-
-.feed-search-wrapper {
-  width: 320px;
-}
-
-.nav-items {
-  display: flex;
-  gap: 2px;
-}
-
-.nav-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  padding: 10px 16px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  transition: var(--transition);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.nav-btn:hover {
-  background: var(--elevated-2);
-  color: var(--lavender);
-  transform: translateY(-1px);
-}
-
-.nav-btn.active {
-  background: var(--elevated-2);
-  color: var(--lavender);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.admin-btn {
-  background: linear-gradient(135deg, var(--lavender), var(--royal-blue));
-  color: var(--black);
-  border: none;
-  padding: 6px 12px;
-  border-radius: var(--radius);
-  font-weight: 800;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.85rem;
-  transition: var(--transition);
-}
-
-.admin-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-purple);
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.user-info:hover {
-  background: var(--elevated-2);
-}
-
-.user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--lavender), var(--royal-blue));
-  color: var(--black);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: 800;
-  border: 2px solid var(--surface);
-  overflow: hidden;
-  transition: var(--transition);
-}
-
-.user-avatar:hover {
-  transform: scale(1.05);
-  border-color: var(--lavender);
-}
-
-.user-avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-}
-
-.logout-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  padding: 8px 16px;
-  border-radius: var(--radius);
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  transition: var(--transition);
-}
-
-.logout-btn:hover {
-  background: var(--danger);
-  color: white;
-  border-color: var(--danger);
-  transform: translateY(-1px);
-}
+/* ========== REMOVED HEADER STYLES (Now in Navbar.css) ========== */
 
 /* ========== SIDEBARS ========== */
 .sidebar {
   position: sticky;
-  top: 90px;
-  height: calc(100vh - 110px);
+  top: 94px; /* Changed from 90px to account for navbar */
+  height: calc(100vh - 134px); /* Adjusted for navbar */
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border) var(--surface);
@@ -822,7 +659,7 @@
 /* ========== MAIN CONTENT ========== */
 .main-content {
   overflow-y: auto;
-  height: calc(100vh - 110px);
+  height: calc(100vh - 134px); /* Adjusted for navbar */
   scrollbar-width: thin;
   scrollbar-color: var(--border) var(--surface);
 }
@@ -1353,18 +1190,6 @@
     display: none;
   }
   
-  .header-left .feed-search-wrapper {
-    display: none;
-  }
-  
-  .nav-text {
-    display: none;
-  }
-  
-  .nav-btn {
-    padding: 12px;
-  }
-  
   .notifications-title {
     font-size: 1.4rem;
   }
@@ -1381,31 +1206,8 @@
 }
 
 @media (max-width: 600px) {
-  .notifications-header-bar {
-    padding: 0 12px;
-  }
-  
-  .nav-items {
-    gap: 1px;
-  }
-  
-  .nav-btn {
-    padding: 8px;
-    font-size: 0.8rem;
-  }
-  
-  .user-avatar {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-  
-  .logout-btn span:last-child {
-    display: none;
-  }
-  
-  .logout-btn {
-    padding: 6px 10px;
+  .layout-container {
+    padding-top: 86px; /* Adjusted for mobile */
   }
   
   .modal-overlay {

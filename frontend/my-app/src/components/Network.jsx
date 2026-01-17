@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import ExploreSearch from "../components/ExploreSearch";
+import Navbar from "../components/Navbar"; // Import the reusable navbar
 import "../styles/Network.css";
 
 function Network() {
@@ -583,13 +583,7 @@ function Network() {
   if (loading && !user) {
     return (
       <div className="network-page-root">
-        <header className="network-header-bar">
-          <div className="network-header-left">
-            <div className="network-logo">
-              <span className="network-logo-text">Swish</span>
-            </div>
-          </div>
-        </header>
+        <Navbar /> {/* Use the reusable navbar */}
         <div className="network-loading-container">
           <div className="network-loading-spinner"></div>
           <p>Loading Network...</p>
@@ -622,86 +616,10 @@ function Network() {
 
   const activeContent = getActiveContent();
 
-  // 🔵 HANDLE LOGOUT
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate("/login");
-  };
-
-  // 🔵 NOTIFICATION HANDLER
-  const handleClickNotification = () => {
-    navigate("/notifications");
-  };
-  
   return (
     <div className="network-page-root">
-      
-      {/* 🔵 HEADER - MATCHING NOTIFICATIONS PAGE */}
-      <header className="network-header-bar">
-        <div className="network-header-left">
-          <div className="network-logo" onClick={() => navigate("/feed")}>
-            <span className="network-logo-icon">💼</span>
-            <span className="network-logo-text">Swish</span>
-          </div>
-          
-          <div className="network-feed-search-wrapper">
-            <ExploreSearch onUserSelect={(selectedUser) => selectedUser?._id && navigate(`/profile/${selectedUser._id}`)} />
-          </div>
-
-          <div className="network-nav-items">
-            <button className={`network-nav-btn ${window.location.pathname === '/feed' ? 'active' : ''}`} onClick={() => navigate("/feed")}>
-              <span className="network-nav-icon">🏠</span>
-              <span className="network-nav-text">Feed</span>
-            </button>
-            <button className={`network-nav-btn ${window.location.pathname === '/profile' ? 'active' : ''}`} onClick={() => navigate("/profile")}>
-              <span className="network-nav-icon">👤</span>
-              <span className="network-nav-text">Profile</span>
-            </button>
-            <button className="network-nav-btn active" onClick={() => navigate("/network")}>
-              <span className="network-nav-icon">👥</span>
-              <span className="network-nav-text">Network</span>
-            </button>
-            <button className={`network-nav-btn ${window.location.pathname === '/explore' ? 'active' : ''}`} onClick={() => navigate("/explore")}>
-              <span className="network-nav-icon">🔥</span>
-              <span className="network-nav-text">Explore</span>
-            </button>
-            <button 
-              className={`network-nav-btn network-notification-bell-btn ${window.location.pathname === '/notifications' ? 'active' : ''}`}
-              onClick={handleClickNotification}
-              title="Notifications"
-            >
-              <span className="network-nav-icon">🔔</span>
-              <span className="network-nav-text">Notifications</span>
-            </button>
-          </div>
-        </div>
-        
-        <div className="network-header-right">
-          {user?.role === 'admin' && (
-            <button 
-              className="network-admin-btn"
-              onClick={() => navigate("/admin")}
-            >
-              <span className="network-admin-icon">👑</span>
-              <span>Admin</span>
-            </button>
-          )}
-          
-          <div className="network-user-info" onClick={() => navigate("/profile")}>
-            <div 
-              className="network-user-avatar" 
-              title="View Profile"
-            >
-              {getUserAvatar(user)}
-            </div>
-          </div>
-          
-          <button className="network-logout-btn" onClick={handleLogout}>
-            <span className="network-logout-icon">🚪</span>
-            <span>Logout</span>
-          </button>
-        </div>
-      </header>
+      {/* Use the reusable Navbar component */}
+      <Navbar />
 
       {/* 🔵 MAIN LAYOUT CONTAINER - MATCHING NOTIFICATIONS */}
       <div className="network-layout-container">

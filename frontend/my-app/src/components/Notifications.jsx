@@ -3,9 +3,8 @@ import React, { useEffect, useState } from "react";
 import { getSocket } from "./NotificationBell";
 import Toast from "./Toast";
 import { useNavigate } from "react-router-dom";
+import Navbar from "./Navbar"; // Import the reusable Navbar
 import "../styles/Notifications.css";
-import ExploreSearch from "./ExploreSearch";
-import "../styles/ExploreSearch.css";
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
@@ -289,13 +288,6 @@ export default function NotificationsPage() {
     }
   };
 
-  // Handle logout
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    navigate("/login");
-  };
-
   // Get user avatar
   const getUserAvatar = (userData) => {
     if (userData?.profilePhoto) {
@@ -308,12 +300,6 @@ export default function NotificationsPage() {
       );
     }
     return <span className="avatar-initial">{userData?.name?.charAt(0).toUpperCase() || "U"}</span>;
-  };
-
-  // Handle notification bell click
-  const handleClickNotification = () => {
-    setNotifCount(0);
-    setToast(null);
   };
 
   // Handle user select from search
@@ -381,15 +367,8 @@ export default function NotificationsPage() {
   if (loading) {
     return (
       <div className="notifications-layout">
-        <Header 
-          user={user}
-          notifCount={notifCount}
-          handleClickNotification={handleClickNotification}
-          handleLogout={handleLogout}
-          handleUserSelectFromSearch={handleUserSelectFromSearch}
-          navigate={navigate}
-          getUserAvatar={getUserAvatar}
-        />
+        {/* Use the reusable Navbar component */}
+        <Navbar />
         
         <div className="layout-container">
           <div className="sidebar left-sidebar loading">
@@ -417,15 +396,8 @@ export default function NotificationsPage() {
 
   return (
     <div className="notifications-layout">
-      <Header 
-        user={user}
-        notifCount={notifCount}
-        handleClickNotification={handleClickNotification}
-        handleLogout={handleLogout}
-        handleUserSelectFromSearch={handleUserSelectFromSearch}
-        navigate={navigate}
-        getUserAvatar={getUserAvatar}
-      />
+      {/* Use the reusable Navbar component */}
+      <Navbar />
 
       <div className="layout-container">
         {/* ========== ENHANCED LEFT SIDEBAR ========== */}
@@ -687,77 +659,5 @@ export default function NotificationsPage() {
 
       <Toast notification={toast} onClose={() => setToast(null)} />
     </div>
-  );
-}
-
-// ========== HEADER COMPONENT ==========
-function Header({ user, notifCount, handleClickNotification, handleLogout, handleUserSelectFromSearch, navigate, getUserAvatar }) {
-  return (
-    <header className="notifications-header-bar">
-      <div className="header-left">
-        <div className="logo" onClick={() => navigate("/feed")}>
-          <span className="logo-icon">💼</span>
-          <span className="logo-text">Swish</span>
-        </div>
-        
-        <div className="feed-search-wrapper">
-          <ExploreSearch onUserSelect={handleUserSelectFromSearch} />
-        </div>
-
-        <div className="nav-items">
-          <button className="nav-btn" onClick={() => navigate("/feed")}>
-            <span className="nav-icon">🏠</span>
-            <span className="nav-text">Feed</span>
-          </button>
-          <button className="nav-btn" onClick={() => navigate("/profile")}>
-            <span className="nav-icon">👤</span>
-            <span className="nav-text">Profile</span>
-          </button>
-          <button className="nav-btn" onClick={() => navigate("/network")}>
-            <span className="nav-icon">👥</span>
-            <span className="nav-text">Network</span>
-          </button>
-          <button className="nav-btn" onClick={() => navigate("/explore")}>
-            <span className="nav-icon">🔥</span>
-            <span className="nav-text">Explore</span>
-          </button>
-          
-          <button 
-            className={`nav-btn notification-bell-btn active`}
-            onClick={handleClickNotification}
-            title="Notifications"
-          >
-            <span className="nav-icon">🔔</span>
-            <span className="nav-text">Notifications</span>
-          </button>
-        </div>
-      </div>
-      <div className="header-right">
-        {user?.role === 'admin' && (
-          <button 
-            className="admin-btn"
-            onClick={() => navigate("/admin")}
-          >
-            <span className="admin-icon">👑</span>
-            <span>Admin</span>
-          </button>
-        )}
-        
-        <div className="user-info">
-          <div 
-            className="user-avatar" 
-            title="View Profile"
-            onClick={() => navigate("/profile")}
-          >
-            {getUserAvatar(user)}
-          </div>
-        </div>
-        
-        <button className="logout-btn" onClick={handleLogout}>
-          <span className="logout-icon">🚪</span>
-          <span>Logout</span>
-        </button>
-      </div>
-    </header>
   );
 }
