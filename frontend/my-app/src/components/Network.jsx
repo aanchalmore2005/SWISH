@@ -25,14 +25,13 @@ function Network() {
   const [showNetworkGrowthModal, setShowNetworkGrowthModal] = useState(false);
   const [showCommonFieldsModal, setShowCommonFieldsModal] = useState(false);
   const [showTopSkillsModal, setShowTopSkillsModal] = useState(false);
-  const [showAlumniNetworkModal, setShowAlumniNetworkModal] = useState(false);
   
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
   // 🔵 LINE CHART COMPONENT
-  const LineChart = ({ data, maxValue, height = 220, color = "#4f46e5" }) => {
+  const LineChart = ({ data, maxValue, height = 220, color = "#a78bfa" }) => {
     if (!data || data.length === 0) return null;
     
     const points = data
@@ -46,24 +45,24 @@ function Network() {
     const areaPoints = `0% 100%, ${points}, 100% 100%`;
     
     return (
-      <div className="line-chart-container" style={{ height: `${height}px` }}>
-        <div className="chart-y-axis">
+      <div className="network-line-chart-container" style={{ height: `${height}px` }}>
+        <div className="network-chart-y-axis">
           {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
-            <div key={i} className="y-tick">
+            <div key={i} className="network-y-tick">
               {Math.round(maxValue * ratio)}
             </div>
           ))}
         </div>
-        <div className="chart-lines">
-          <svg className="chart-svg" width="100%" height="100%" preserveAspectRatio="none">
+        <div className="network-chart-lines">
+          <svg className="network-chart-svg" width="100%" height="100%" preserveAspectRatio="none">
             <polygon
               points={areaPoints}
-              fill={`url(#gradient-${color.replace('#', '')})`}
+              fill={`url(#network-gradient-${color.replace('#', '')})`}
               fillOpacity="0.2"
             />
             
             <defs>
-              <linearGradient id={`gradient-${color.replace('#', '')}`} x1="0%" y1="0%" x2="0%" y2="100%">
+              <linearGradient id={`network-gradient-${color.replace('#', '')}`} x1="0%" y1="0%" x2="0%" y2="100%">
                 <stop offset="0%" stopColor={color} stopOpacity="0.3" />
                 <stop offset="100%" stopColor={color} stopOpacity="0" />
               </linearGradient>
@@ -79,12 +78,12 @@ function Network() {
             />
           </svg>
           
-          <div className="x-axis-labels">
+          <div className="network-x-axis-labels">
             {data.map((item, index) => (
-              <div key={index} className="x-label">
-                <div className="x-label-text">{item.label}</div>
+              <div key={index} className="network-x-label">
+                <div className="network-x-label-text">{item.label}</div>
                 {item.rawCount !== undefined && item.rawCount !== 0 && (
-                  <div className={`x-label-count ${item.rawCount > 0 ? 'positive' : 'negative'}`}>
+                  <div className={`network-x-label-count ${item.rawCount > 0 ? 'positive' : 'negative'}`}>
                     {item.rawCount > 0 ? `+${item.rawCount}` : item.rawCount}
                   </div>
                 )}
@@ -556,8 +555,8 @@ function Network() {
 
   const getUserAvatar = (userObj) => (
     userObj?.profilePhoto ? 
-      <img src={userObj.profilePhoto} alt={userObj.name} className="user-avatar-img" /> :
-      <div className="avatar-initial">{userObj?.name?.charAt(0).toUpperCase() || "U"}</div>
+      <img src={userObj.profilePhoto} alt={userObj.name} className="network-user-avatar-img" /> :
+      <div className="network-avatar-initial">{userObj?.name?.charAt(0).toUpperCase() || "U"}</div>
   );
 
   const getConnectionDateDisplay = (connection) => {
@@ -583,9 +582,18 @@ function Network() {
   // 🔵 RENDER FUNCTIONS
   if (loading && !user) {
     return (
-      <div className="network-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading Network...</p>
+      <div className="network-page-root">
+        <header className="network-header-bar">
+          <div className="network-header-left">
+            <div className="network-logo">
+              <span className="network-logo-text">Swish</span>
+            </div>
+          </div>
+        </header>
+        <div className="network-loading-container">
+          <div className="network-loading-spinner"></div>
+          <p>Loading Network...</p>
+        </div>
       </div>
     );
   }
@@ -626,95 +634,488 @@ function Network() {
   };
   
   return (
-    <div className="network-page">
+    <div className="network-page-root">
       
-      {/* 🔵 HEADER - UPDATED TO MATCH FEED PAGE NAVBAR */}
-      <header className="feed-header network-feed-header">
-        <div className="header-left">
-          <div className="logo" onClick={() => navigate("/feed")}>💼 Swish</div>
+      {/* 🔵 HEADER - MATCHING NOTIFICATIONS PAGE */}
+      <header className="network-header-bar">
+        <div className="network-header-left">
+          <div className="network-logo" onClick={() => navigate("/feed")}>
+            <span className="network-logo-icon">💼</span>
+            <span className="network-logo-text">Swish</span>
+          </div>
           
-          {/* SEARCH BAR */}
-          <div className="feed-search-wrapper">
+          <div className="network-feed-search-wrapper">
             <ExploreSearch onUserSelect={(selectedUser) => selectedUser?._id && navigate(`/profile/${selectedUser._id}`)} />
           </div>
 
-          <div className="nav-items">
-            <button className="nav-btn" onClick={() => navigate("/feed")}>🏠 Feed</button>
-            <button className="nav-btn" onClick={() => navigate("/profile")}>👤 Profile</button>
-            <button className="nav-btn active" onClick={() => navigate("/network")}>👥 Network</button>
-            <button className="nav-btn" onClick={() => navigate("/Explore")}>🔥 Explore</button>
+          <div className="network-nav-items">
+            <button className={`network-nav-btn ${window.location.pathname === '/feed' ? 'active' : ''}`} onClick={() => navigate("/feed")}>
+              <span className="network-nav-icon">🏠</span>
+              <span className="network-nav-text">Feed</span>
+            </button>
+            <button className={`network-nav-btn ${window.location.pathname === '/profile' ? 'active' : ''}`} onClick={() => navigate("/profile")}>
+              <span className="network-nav-icon">👤</span>
+              <span className="network-nav-text">Profile</span>
+            </button>
+            <button className="network-nav-btn active" onClick={() => navigate("/network")}>
+              <span className="network-nav-icon">👥</span>
+              <span className="network-nav-text">Network</span>
+            </button>
+            <button className={`network-nav-btn ${window.location.pathname === '/explore' ? 'active' : ''}`} onClick={() => navigate("/explore")}>
+              <span className="network-nav-icon">🔥</span>
+              <span className="network-nav-text">Explore</span>
+            </button>
             <button 
-              className="nav-btn notification-bell-btn"
+              className={`network-nav-btn network-notification-bell-btn ${window.location.pathname === '/notifications' ? 'active' : ''}`}
               onClick={handleClickNotification}
               title="Notifications"
             >
-              🔔 Notifications
+              <span className="network-nav-icon">🔔</span>
+              <span className="network-nav-text">Notifications</span>
             </button>
           </div>
         </div>
-        <div className="header-right">
-          <div className="user-info">
-            <span className="user-name">Welcome, {user?.name || "User"}</span>
+        
+        <div className="network-header-right">
+          {user?.role === 'admin' && (
+            <button 
+              className="network-admin-btn"
+              onClick={() => navigate("/admin")}
+            >
+              <span className="network-admin-icon">👑</span>
+              <span>Admin</span>
+            </button>
+          )}
+          
+          <div className="network-user-info" onClick={() => navigate("/profile")}>
             <div 
-              className="user-avatar" 
+              className="network-user-avatar" 
               title="View Profile"
-              onClick={() => navigate("/profile")}
             >
               {getUserAvatar(user)}
             </div>
           </div>
           
-          {user?.role === 'admin' && (
-            <button 
-              className="admin-btn"
-              onClick={() => navigate("/admin")}
-              style={{
-                background: 'linear-gradient(135deg, #6f4bac, #9793e4)',
-                color: 'white',
-                border: 'none',
-                padding: '8px 16px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: '600',
-                fontSize: '14px',
-                marginRight: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-              onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
-            >
-              👑 Admin
-            </button>
-          )}
-          
-          <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
+          <button className="network-logout-btn" onClick={handleLogout}>
+            <span className="network-logout-icon">🚪</span>
+            <span>Logout</span>
+          </button>
         </div>
       </header>
 
-      {/* 📊 NETWORK GROWTH MODAL */}
-      {showNetworkGrowthModal && (
-        <div className="modal-overlay" onClick={() => setShowNetworkGrowthModal(false)}>
-          <div className="modal-content analytics-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-section">
-                <h3>📊 Network Growth Analytics</h3>
-                <div className="data-source-indicator">
-                  <span className="data-source real">
-                    📈 Real-Time Historical Tracking
-                  </span>
+      {/* 🔵 MAIN LAYOUT CONTAINER - MATCHING NOTIFICATIONS */}
+      <div className="network-layout-container">
+        {/* ========== LEFT SIDEBAR ========== */}
+        <div className="network-sidebar network-left-sidebar">
+          <div className="network-profile-mini-card" onClick={() => navigate("/profile")}>
+            <div className="network-mini-avatar">
+              {getUserAvatar(user)}
+            </div>
+            <div className="network-mini-info">
+              <h4>{user?.name || "User"}</h4>
+              <p className="network-mini-title">
+                {user?.role === 'student' ? `🎓 ${user?.department || 'Student'}` : 
+                 user?.role === 'faculty' ? `👨‍🏫 ${user?.department || 'Faculty'}` : 
+                 user?.role === 'admin' ? '👑 Administrator' : '👤 Member'}
+              </p>
+              <p className="network-mini-bio">
+                {user?.bio?.slice(0, 80) || "Welcome to Swish! Connect with your college community."}
+              </p>
+            </div>
+            <div className="network-mini-stats">
+              <div className="network-stats-grid">
+                <div className="network-stat-item" onClick={() => setActiveTab("connections")}>
+                  <span className="network-stat-number">{connections.length}</span>
+                  <span className="network-stat-label">Connections</span>
+                </div>
+                <div className="network-stat-item" onClick={() => setActiveTab("received")}>
+                  <span className="network-stat-number">{incoming.length}</span>
+                  <span className="network-stat-label">Pending</span>
                 </div>
               </div>
-              <button className="modal-close" onClick={() => setShowNetworkGrowthModal(false)}>×</button>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="network-quick-actions-card">
+            <h3 className="network-sidebar-title">
+              <span>⚡ Quick Actions</span>
+            </h3>
+            <div className="network-quick-actions-grid">
+              <button className="network-quick-action-btn" onClick={() => {
+                setQuickActionFilter('mutual_connections');
+                setSearchQuery('People with mutual connections');
+              }}>
+                <span className="network-action-icon">🤝</span>
+                <span>Mutual Connections</span>
+              </button>
+              <button className="network-quick-action-btn" onClick={() => {
+                setQuickActionFilter('recent_connections');
+                setSearchQuery('Recent connections');
+                setActiveTab('connections');
+              }}>
+                <span className="network-action-icon">🕒</span>
+                <span>Recent</span>
+              </button>
+              <button className="network-quick-action-btn" onClick={() => {
+                setQuickActionFilter('same_department');
+                setSearchQuery(`People in ${user?.department || 'your department'}`);
+              }}>
+                <span className="network-action-icon">🎯</span>
+                <span>Same Dept</span>
+              </button>
+              <button className="network-quick-action-btn" onClick={() => setActiveTab("received")}>
+                <span className="network-action-icon">📥</span>
+                <span>Requests</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ========== MAIN CONTENT ========== */}
+        <div className="network-main-content">
+          <div className="network-container">
+            <div className="network-content-header">
+              <h2 className="network-content-title">
+                My Network
+                {incoming.length > 0 && <span className="network-title-badge">{incoming.length} new</span>}
+              </h2>
+              <div className="network-header-actions">
+                <button className="network-feature-btn" onClick={() => setShowNetworkGrowthModal(true)}>
+                  Analytics
+                </button>
+                <button className="network-feature-btn" onClick={exportConnections}>
+                  Export
+                </button>
+              </div>
+            </div>
+
+            {/* Search/Filter Bar */}
+            {searchQuery && (
+              <div className="network-filter-bar">
+                <div className="network-filter-info">
+                  <span className="network-filter-icon">🔍</span>
+                  <span className="network-filter-text">Showing: {searchQuery}</span>
+                  <span className="network-filter-count">({activeContent.length} results)</span>
+                </div>
+                <button className="network-clear-filter-btn" onClick={clearFilter}>
+                  <span className="network-clear-icon">✕</span>
+                  Clear Filter
+                </button>
+              </div>
+            )}
+
+            {/* Network Tabs */}
+            <div className="network-tabs-container">
+              <div 
+                className={`network-tab-item ${activeTab === 'people' ? 'active' : ''}`} 
+                onClick={() => { setActiveTab('people'); clearFilter(); }}
+              >
+                <span className="network-tab-icon">👥</span>
+                <span className="network-tab-text">People</span>
+              </div>
+
+              <div 
+                className={`network-tab-item ${activeTab === 'received' ? 'active' : ''}`} 
+                onClick={() => { setActiveTab('received'); clearFilter(); }}
+              >
+                <span className="network-tab-icon">📥</span>
+                <span className="network-tab-text">Received</span>
+                {incoming.length > 0 && <span className="network-notification-badge">{incoming.length}</span>}
+              </div>
+
+              <div 
+                className={`network-tab-item ${activeTab === 'sent' ? 'active' : ''}`} 
+                onClick={() => { setActiveTab('sent'); clearFilter(); }}
+              >
+                <span className="network-tab-icon">📤</span>
+                <span className="network-tab-text">Sent</span>
+              </div>
+
+              <div 
+                className={`network-tab-item ${activeTab === 'connections' ? 'active' : ''}`} 
+                onClick={() => { setActiveTab('connections'); clearFilter(); }}
+              >
+                <span className="network-tab-icon">🤝</span>
+                <span className="network-tab-text">Connections</span>
+              </div>
+            </div>
+
+            {/* Tab Content - People */}
+            {activeTab === "people" && (
+              <div className="network-tab-content active">
+                {activeContent.length === 0 ? (
+                  <div className="network-empty-state">
+                    <div className="network-empty-icon">👥</div>
+                    <h3>{searchQuery ? "No results found" : "No users to connect with"}</h3>
+                    <p>{searchQuery ? "Try a different filter or clear the search" : "All users are already connected or have pending requests"}</p>
+                    {searchQuery && (
+                      <button className="network-connect-btn" onClick={clearFilter} style={{marginTop: '20px', maxWidth: '200px'}}>
+                        Show All Users
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="network-users-list">
+                    {activeContent.map(user => {
+                      const mutualCount = quickActionFilter === 'mutual_connections' ? 
+                        calculateMutualConnections(user)?.length || 0 : 0;
+                      
+                      return (
+                        <div key={user._id} className="network-user-card">
+                          <div className="network-card-left">
+                            <div className="network-card-avatar">
+                              {getUserAvatar(user)}
+                            </div>
+                            <div className="network-card-info">
+                              <h3 className="network-card-name">{user.name}</h3>
+                              <p className="network-card-details">{user.role}</p>
+                              <span className="network-card-department">{user.department || "No department"}</span>
+                              {mutualCount > 0 && (
+                                <div className="network-mutual-connections-badge">
+                                  <span className="network-mutual-icon">🤝</span>
+                                  <span className="network-mutual-count">{mutualCount} mutual connection{mutualCount !== 1 ? 's' : ''}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="network-card-actions">
+                            <button 
+                              className="network-connect-btn" 
+                              onClick={() => handleNetworkAction("request", user._id, user.name, user)}
+                            >
+                              Connect
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab Content - Received Requests */}
+            {activeTab === "received" && (
+              <div className="network-tab-content active">
+                {activeContent.length === 0 ? (
+                  <div className="network-empty-state">
+                    <div className="network-empty-icon">📥</div>
+                    <h3>No pending requests</h3>
+                    <p>When someone sends you a request, it will appear here</p>
+                  </div>
+                ) : (
+                  <div className="network-requests-list">
+                    {activeContent.map(request => (
+                      <div key={request._id} className="network-request-card">
+                        <div className="network-card-left">
+                          <div className="network-card-avatar">
+                            {getUserAvatar(request)}
+                          </div>
+                          <div className="network-card-info">
+                            <h3 className="network-card-name">{request.name}</h3>
+                            <p className="network-card-details">{request.role}</p>
+                            <span className="network-card-department">{request.department || "No department"}</span>
+                          </div>
+                        </div>
+                        <div className="network-card-actions">
+                          <button 
+                            className="network-accept-btn" 
+                            onClick={() => handleNetworkAction("accept", request._id, request.name, request)}
+                          >
+                            Accept
+                          </button>
+                          <button 
+                            className="network-reject-btn" 
+                            onClick={() => handleNetworkAction("reject", request._id, request.name)}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab Content - Sent Requests */}
+            {activeTab === "sent" && (
+              <div className="network-tab-content active">
+                {activeContent.length === 0 ? (
+                  <div className="network-empty-state">
+                    <div className="network-empty-icon">📤</div>
+                    <h3>No sent requests</h3>
+                    <p>Connect with people to grow your network</p>
+                  </div>
+                ) : (
+                  <div className="network-sent-list">
+                    {activeContent.map(request => (
+                      <div key={request._id} className="network-sent-card">
+                        <div className="network-card-left">
+                          <div className="network-card-avatar">
+                            {getUserAvatar(request)}
+                          </div>
+                          <div className="network-card-info">
+                            <h3 className="network-card-name">{request.name}</h3>
+                            <p className="network-card-details">{request.role}</p>
+                            <span className="network-card-department">{request.department || "No department"}</span>
+                            <div className="network-sent-status">
+                              <span className="network-status-icon">⏳</span>
+                              <span className="network-status-text">Pending</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="network-card-actions">
+                          <button 
+                            className="network-cancel-btn" 
+                            onClick={() => handleNetworkAction("cancel", request._id, request.name)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab Content - Connections */}
+            {activeTab === "connections" && (
+              <div className="network-tab-content active">
+                {activeContent.length === 0 ? (
+                  <div className="network-empty-state">
+                    <div className="network-empty-icon">🤝</div>
+                    <h3>No connections yet</h3>
+                    <p>Start building your professional network</p>
+                    <button className="network-connect-btn" onClick={() => setActiveTab("people")} style={{marginTop: '20px'}}>
+                      Discover People to Connect With
+                    </button>
+                  </div>
+                ) : (
+                  <div className="network-connections-list">
+                    {activeContent.map(connection => {
+                      const connectionDateDisplay = getConnectionDateDisplay(connection);
+                      
+                      return (
+                        <div key={connection._id} className="network-connection-card">
+                          <div className="network-card-left">
+                            <div className="network-card-avatar">
+                              {getUserAvatar(connection)}
+                            </div>
+                            <div className="network-card-info">
+                              <h3 className="network-card-name">{connection.name}</h3>
+                              <p className="network-card-details">{connection.role}</p>
+                              <span className="network-card-department">{connection.department || "No department"}</span>
+                              {connectionDateDisplay && (
+                                <div className="network-connection-date">
+                                  <span className="network-date-icon">📅</span>
+                                  <span className="network-date-text">Connected {connectionDateDisplay}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="network-card-actions">
+                            <button 
+                              className="network-remove-btn" 
+                              onClick={() => {
+                                if (window.confirm(`Remove ${connection.name} from your connections?`)) {
+                                  handleNetworkAction("remove", connection._id, connection.name, connection);
+                                }
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ========== RIGHT SIDEBAR ========== */}
+        <div className="network-sidebar network-right-sidebar">
+          {/* Network Analytics */}
+          <div className="network-analytics-card">
+            <h3 className="network-sidebar-title">
+              <span>📊 Network Analytics</span>
+            </h3>
+            
+            <div className="network-suggestions-list">
+              {[
+                ["📈", "Network Growth", `${networkInsights.networkGrowth.total} connections`, () => setShowNetworkGrowthModal(true)],
+                ["🎯", "Common Fields", networkInsights.commonFields.topDepartment, () => setShowCommonFieldsModal(true)],
+                ["🔧", "Top Skills", networkInsights.topSkills.topSkill, () => setShowTopSkillsModal(true)],
+              ].map(([icon, title, value, onClick], idx) => (
+                <div key={idx} className="network-suggestion-item" onClick={onClick}>
+                  <div className="network-suggestion-avatar">
+                    <span>{icon}</span>
+                  </div>
+                  <div className="network-suggestion-info">
+                    <h4>{title}</h4>
+                    <p className="network-suggestion-meta">{value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button 
+              className="network-view-all-btn"
+              onClick={() => setShowNetworkGrowthModal(true)}
+            >
+              View all analytics →
+            </button>
+          </div>
+
+          {/* Quick Stats */}
+          <div className="network-analytics-card">
+            <h3 className="network-sidebar-title">
+              <span>⚡ Quick Stats</span>
+            </h3>
+            
+            <div className="network-mini-stats">
+              <div className="network-stats-grid">
+                <div className="network-stat-item">
+                  <span className="network-stat-number">{connections.length}</span>
+                  <span className="network-stat-label">Total</span>
+                </div>
+                <div className="network-stat-item">
+                  <span className="network-stat-number">{incoming.length}</span>
+                  <span className="network-stat-label">Pending</span>
+                </div>
+                <div className="network-stat-item">
+                  <span className="network-stat-number">{outgoing.length}</span>
+                  <span className="network-stat-label">Sent</span>
+                </div>
+                <div className="network-stat-item">
+                  <span className="network-stat-number">{networkInsights.networkGrowth.dailyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.dailyChange}</span>
+                  <span className="network-stat-label">Today</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 📊 NETWORK GROWTH MODAL */}
+      {showNetworkGrowthModal && (
+        <div className="network-modal-overlay" onClick={() => setShowNetworkGrowthModal(false)}>
+          <div className="network-analytics-modal" onClick={e => e.stopPropagation()}>
+            <div className="network-modal-header">
+              <h3>📊 Network Growth Analytics</h3>
+              <button className="network-modal-close" onClick={() => setShowNetworkGrowthModal(false)}>×</button>
             </div>
             
-            <div className="modal-body">
-              <div className="analytics-summary">
-                <div className="timeframe-selector">
+            <div className="network-modal-body">
+              <div className="network-analytics-summary">
+                <div className="network-timeframe-selector">
                   <h4>View Timeframe:</h4>
-                  <div className="timeframe-buttons">
+                  <div className="network-timeframe-buttons">
                     {[
                       { key: "7days", label: "7 Days" },
                       { key: "30days", label: "30 Days" },
@@ -723,7 +1124,7 @@ function Network() {
                     ].map(({ key, label }) => (
                       <button
                         key={key}
-                        className={`timeframe-btn ${graphTimeframe === key ? 'active' : ''}`}
+                        className={`network-timeframe-btn ${graphTimeframe === key ? 'active' : ''}`}
                         onClick={() => handleTimeframeChange(key)}
                       >
                         {label}
@@ -732,127 +1133,50 @@ function Network() {
                   </div>
                 </div>
                 
-                <div className="summary-stats">
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.networkGrowth.total}</div>
-                    <div className="stat-label">Total Connections</div>
-                    <div className="stat-note">Current count</div>
+                <div className="network-summary-stats">
+                  <div className="network-stat-item">
+                    <div className="network-stat-number">{networkInsights.networkGrowth.total}</div>
+                    <div className="network-stat-label">Total Connections</div>
                   </div>
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.networkGrowth.dailyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.dailyChange}</div>
-                    <div className="stat-label">Today</div>
-                    <div className="stat-note">Net change</div>
+                  <div className="network-stat-item">
+                    <div className="network-stat-number">{networkInsights.networkGrowth.dailyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.dailyChange}</div>
+                    <div className="network-stat-label">Today</div>
                   </div>
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.networkGrowth.weeklyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.weeklyChange}</div>
-                    <div className="stat-label">This Week</div>
-                    <div className="stat-note">Weekly change</div>
+                  <div className="network-stat-item">
+                    <div className="network-stat-number">{networkInsights.networkGrowth.weeklyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.weeklyChange}</div>
+                    <div className="network-stat-label">This Week</div>
                   </div>
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.networkGrowth.monthlyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.monthlyChange}</div>
-                    <div className="stat-label">This Month</div>
-                    <div className="stat-note">Monthly change</div>
+                  <div className="network-stat-item">
+                    <div className="network-stat-number">{networkInsights.networkGrowth.monthlyChange > 0 ? '+' : ''}{networkInsights.networkGrowth.monthlyChange}</div>
+                    <div className="network-stat-label">This Month</div>
                   </div>
                 </div>
                 
-                <div className="growth-chart">
+                <div className="network-growth-chart">
                   <h4>📈 Network Growth Timeline</h4>
-                  <div className="data-real-notice">
-                    <span className="real-icon">✅</span>
-                    <span>Tracking {networkInsights.historicalStats.totalEvents} connection events in real-time</span>
-                  </div>
-                  <div className="chart-container-large">
+                  <div className="network-line-chart-container">
                     <LineChart 
                       data={networkInsights.networkGrowth.historicalData}
                       maxValue={networkInsights.networkGrowth.maxHistoricalValue}
-                      color="#3498db"
+                      color="#a78bfa"
                       height={280}
                     />
-                  </div>
-                  <div className="chart-legend">
-                    <div className="legend-item">
-                      <div className="legend-color" style={{ backgroundColor: '#3498db' }}></div>
-                      <span>Network Size</span>
-                    </div>
-                    <div className="legend-item">
-                      <div className="legend-color" style={{ backgroundColor: '#2ecc71' }}></div>
-                      <span>Growth Trend</span>
-                    </div>
-                  </div>
-                </div>
-                
-                {networkInsights.historicalStats.totalEvents > 0 && (
-                  <div className="event-history">
-                    <h4>📝 Recent Network Activity</h4>
-                    <div className="events-list-container">
-                      {[...connectionHistory]
-                        .sort((a, b) => new Date(b.date) - new Date(a.date))
-                        .slice(0, 8)
-                        .map((event, index) => (
-                          <div key={index} className={`event-item ${event.type}`}>
-                            <div className="event-icon">
-                              {event.type === 'connected' ? '🔗' : '❌'}
-                            </div>
-                            <div className="event-content">
-                              <div className="event-description">
-                                <strong>{event.userName}</strong> was {event.type === 'connected' ? 'added to' : 'removed from'} your network
-                              </div>
-                              <div className="event-date">
-                                {new Date(event.date).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </div>
-                            </div>
-                            <div className="event-action">
-                              {event.type === 'connected' ? '+1' : '-1'}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="stats-summary">
-                  <div className="stat-card-mini">
-                    <div className="stat-mini-value">{networkInsights.historicalStats.connectionEvents}</div>
-                    <div className="stat-mini-label">Connections Made</div>
-                  </div>
-                  <div className="stat-card-mini">
-                    <div className="stat-mini-value">{networkInsights.historicalStats.disconnectionEvents}</div>
-                    <div className="stat-mini-label">Connections Removed</div>
-                  </div>
-                  <div className="stat-card-mini">
-                    <div className="stat-mini-value">{networkInsights.networkGrowth.currentStreak}</div>
-                    <div className="stat-mini-label">Growth Streak</div>
-                  </div>
-                  <div className="stat-card-mini">
-                    <div className="stat-mini-value">
-                      {networkInsights.historicalStats.connectionEvents - networkInsights.historicalStats.disconnectionEvents}
-                    </div>
-                    <div className="stat-mini-label">Net Growth</div>
                   </div>
                 </div>
               </div>
             </div>
             
-            <div className="modal-actions">
-              <button className="modal-btn" onClick={() => {
+            <div className="network-modal-actions">
+              <button className="network-modal-btn" onClick={() => {
                 setShowNetworkGrowthModal(false);
                 setQuickActionFilter('recent_connections');
                 setSearchQuery("Recent connections");
                 setActiveTab("connections");
               }}>
-                <span className="modal-icon">🔄</span>
+                <span className="network-modal-icon">🔄</span>
                 View Recent Connections
               </button>
-              <button className="modal-btn" onClick={exportConnections}>
-                <span className="modal-icon">📥</span>
-                Export Complete History
-              </button>
-              <button className="modal-btn cancel" onClick={() => setShowNetworkGrowthModal(false)}>
+              <button className="network-modal-btn cancel" onClick={() => setShowNetworkGrowthModal(false)}>
                 Close
               </button>
             </div>
@@ -862,35 +1186,35 @@ function Network() {
 
       {/* 🔵 COMMON FIELDS MODAL */}
       {showCommonFieldsModal && (
-        <div className="modal-overlay" onClick={() => setShowCommonFieldsModal(false)}>
-          <div className="modal-content analytics-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className="network-modal-overlay" onClick={() => setShowCommonFieldsModal(false)}>
+          <div className="network-analytics-modal" onClick={e => e.stopPropagation()}>
+            <div className="network-modal-header">
               <h3>🎯 Common Fields Analysis</h3>
-              <button className="modal-close" onClick={() => setShowCommonFieldsModal(false)}>×</button>
+              <button className="network-modal-close" onClick={() => setShowCommonFieldsModal(false)}>×</button>
             </div>
-            <div className="modal-body">
-              <div className="analytics-summary">
-                <div className="summary-stats">
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.commonFields.departments.length}</div>
-                    <div className="stat-label">Common Fields</div>
+            <div className="network-modal-body">
+              <div className="network-analytics-summary">
+                <div className="network-summary-stats">
+                  <div className="network-stat-item">
+                    <div className="network-stat-number">{networkInsights.commonFields.departments.length}</div>
+                    <div className="network-stat-label">Common Fields</div>
                   </div>
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.commonFields.departments[0]?.count || 0}</div>
-                    <div className="stat-label">In {networkInsights.commonFields.topDepartment}</div>
+                  <div className="network-stat-item">
+                    <div className="network-stat-number">{networkInsights.commonFields.departments[0]?.count || 0}</div>
+                    <div className="network-stat-label">In {networkInsights.commonFields.topDepartment}</div>
                   </div>
                 </div>
                 
-                <div className="fields-list">
+                <div className="network-fields-list">
                   <h4>Top Fields in Your Network</h4>
                   {networkInsights.commonFields.departments.slice(0, 8).map((field, index) => (
-                    <div key={index} className="field-item">
-                      <div className="field-rank">{index + 1}</div>
-                      <div className="field-name">{field.dept}</div>
-                      <div className="field-count">{field.count} connections</div>
-                      <div className="field-bar">
+                    <div key={index} className="network-field-item">
+                      <div className="network-field-rank">{index + 1}</div>
+                      <div className="network-field-name">{field.dept}</div>
+                      <div className="network-field-count">{field.count} connections</div>
+                      <div className="network-field-bar">
                         <div 
-                          className="field-bar-fill" 
+                          className="network-field-bar-fill" 
                           style={{ 
                             width: `${(field.count / Math.max(...networkInsights.commonFields.departments.map(f => f.count))) * 100}%` 
                           }}
@@ -901,8 +1225,8 @@ function Network() {
                 </div>
               </div>
             </div>
-            <div className="modal-actions">
-              <button className="modal-btn" onClick={() => {
+            <div className="network-modal-actions">
+              <button className="network-modal-btn" onClick={() => {
                 setShowCommonFieldsModal(false);
                 if (networkInsights.commonFields.topDepartment !== "No common field") {
                   setQuickActionFilter('same_department');
@@ -910,10 +1234,10 @@ function Network() {
                   setActiveTab("people");
                 }
               }}>
-                <span className="modal-icon">🔗</span>
+                <span className="network-modal-icon">🔗</span>
                 Connect with {networkInsights.commonFields.topDepartment}
               </button>
-              <button className="modal-btn cancel" onClick={() => setShowCommonFieldsModal(false)}>
+              <button className="network-modal-btn cancel" onClick={() => setShowCommonFieldsModal(false)}>
                 Close
               </button>
             </div>
@@ -923,35 +1247,35 @@ function Network() {
 
       {/* 🔵 TOP SKILLS MODAL */}
       {showTopSkillsModal && (
-        <div className="modal-overlay" onClick={() => setShowTopSkillsModal(false)}>
-          <div className="modal-content analytics-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className="network-modal-overlay" onClick={() => setShowTopSkillsModal(false)}>
+          <div className="network-analytics-modal" onClick={e => e.stopPropagation()}>
+            <div className="network-modal-header">
               <h3>🔧 Top Shared Skills Analysis</h3>
-              <button className="modal-close" onClick={() => setShowTopSkillsModal(false)}>×</button>
+              <button className="network-modal-close" onClick={() => setShowTopSkillsModal(false)}>×</button>
             </div>
-            <div className="modal-body">
-              <div className="analytics-summary">
-                <div className="summary-stats">
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.topSkills.skills.length}</div>
-                    <div className="stat-label">Shared Skills</div>
+            <div className="network-modal-body">
+              <div className="network-analytics-summary">
+                <div className="network-summary-stats">
+                  <div className="network-stat-item">
+                    <div className="network-stat-number">{networkInsights.topSkills.skills.length}</div>
+                    <div className="network-stat-label">Shared Skills</div>
                   </div>
-                  <div className="stat-item">
-                    <div className="stat-value">{networkInsights.topSkills.skills[0]?.count || 0}</div>
-                    <div className="stat-label">Know {networkInsights.topSkills.topSkill}</div>
+                  <div className="network-stat-item">
+                    <div className="network-stat-number">{networkInsights.topSkills.skills[0]?.count || 0}</div>
+                    <div className="network-stat-label">Know {networkInsights.topSkills.topSkill}</div>
                   </div>
                 </div>
                 
-                <div className="skills-list">
+                <div className="network-skills-list">
                   <h4>Skill Ranking</h4>
                   {networkInsights.topSkills.skills.slice(0, 10).map((skill, index) => (
-                    <div key={index} className="skill-item-modal">
-                      <div className="skill-rank">{index + 1}</div>
-                      <div className="skill-name">{skill.skill}</div>
-                      <div className="skill-count">{skill.count} connections</div>
-                      <div className="skill-bar">
+                    <div key={index} className="network-skill-item-modal">
+                      <div className="network-skill-rank">{index + 1}</div>
+                      <div className="network-skill-name">{skill.skill}</div>
+                      <div className="network-skill-count">{skill.count} connections</div>
+                      <div className="network-skill-bar">
                         <div 
-                          className="skill-bar-fill" 
+                          className="network-skill-bar-fill" 
                           style={{ 
                             width: `${(skill.count / Math.max(...networkInsights.topSkills.skills.map(s => s.count))) * 100}%` 
                           }}
@@ -962,8 +1286,8 @@ function Network() {
                 </div>
               </div>
             </div>
-            <div className="modal-actions">
-              <button className="modal-btn" onClick={() => {
+            <div className="network-modal-actions">
+              <button className="network-modal-btn" onClick={() => {
                 setShowTopSkillsModal(false);
                 if (networkInsights.topSkills.topSkill !== "No shared skills") {
                   setQuickActionFilter('top_skill');
@@ -971,351 +1295,16 @@ function Network() {
                   setActiveTab("people");
                 }
               }}>
-                <span className="modal-icon">👥</span>
+                <span className="network-modal-icon">👥</span>
                 Find People with {networkInsights.topSkills.topSkill}
               </button>
-              <button className="modal-btn cancel" onClick={() => setShowTopSkillsModal(false)}>
+              <button className="network-modal-btn cancel" onClick={() => setShowTopSkillsModal(false)}>
                 Close
               </button>
             </div>
           </div>
         </div>
       )}
-      
-      
-      {/* 🔵 MAIN CONTENT */}
-      <main className="network-main">
-        <div className="network-hero">
-          <div className="hero-content">
-            <h1>My Network</h1>
-            <p>Connect with professionals and grow your circle</p>
-            {networkInsights.networkGrowth.hasRealData && (
-              <div className="historical-data-badge">
-                <span className="badge-icon">📊</span>
-                <span className="badge-text">Real-time growth tracking active</span>
-              </div>
-            )}
-          </div>
-          <div className="hero-stats">
-            {[
-              {value: connections.length, label: "Connections"}, 
-              {value: incoming.length, label: "Pending"}, 
-              {value: outgoing.length, label: "Sent"},
-              {value: `${networkInsights.networkGrowth.dailyChange > 0 ? '+' : ''}${networkInsights.networkGrowth.dailyChange}`, label: "Today"},
-              {value: `${networkInsights.historicalStats.totalEvents}`, label: "Total Events"}
-            ].map((stat, i) => (
-              <div key={i} className="stat-card">
-                <div className="stat-value">{stat.value}</div>
-                <div className="stat-label">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Search/Filter Bar */}
-        {searchQuery && (
-          <div className="filter-bar">
-            <div className="filter-info">
-              <span className="filter-icon">🔍</span>
-              <span className="filter-text">Showing: {searchQuery}</span>
-              <span className="filter-count">({activeContent.length} results)</span>
-            </div>
-            <button className="clear-filter-btn" onClick={clearFilter}>
-              <span className="clear-icon">✕</span> Clear Filter
-            </button>
-          </div>
-        )}
-
-        {/* UPDATED TAB NAVIGATION */}
-        <div className="network-tabs">
-          {/* PEOPLE (NO BADGE) */}
-          <div 
-            className={`tab-item ${activeTab === 'people' ? 'active' : ''}`} 
-            onClick={() => { setActiveTab('people'); clearFilter(); }}
-          >
-            <span className="tab-icon">👥</span>
-            <span className="tab-text">People</span>
-          </div>
-
-          {/* RECEIVED (BADGE KEPT) */}
-          <div 
-            className={`tab-item ${activeTab === 'received' ? 'active' : ''}`} 
-            onClick={() => { setActiveTab('received'); clearFilter(); }}
-          >
-            <span className="tab-icon">📥</span>
-            <span className="tab-text">Received</span>
-            {incoming.length > 0 && <span className="notification-badge">{incoming.length}</span>}
-          </div>
-
-          {/* SENT (NO BADGE) */}
-          <div 
-            className={`tab-item ${activeTab === 'sent' ? 'active' : ''}`} 
-            onClick={() => { setActiveTab('sent'); clearFilter(); }}
-          >
-            <span className="tab-icon">📤</span>
-            <span className="tab-text">Sent</span>
-          </div>
-
-          {/* CONNECTIONS (NO BADGE) */}
-          <div 
-            className={`tab-item ${activeTab === 'connections' ? 'active' : ''}`} 
-            onClick={() => { setActiveTab('connections'); clearFilter(); }}
-          >
-            <span className="tab-icon">🤝</span>
-            <span className="tab-text">Connections</span>
-          </div>
-        </div>
-
-        <div className="tab-content-wrapper">
-          {activeTab === "people" && (
-            <div className="tab-content active">
-              <div className="section-header">
-                <h2>{searchQuery || "Discover Professionals"}</h2>
-                <p>{searchQuery ? "Filtered results" : "Connect with people in your network"}</p>
-                {quickActionFilter === 'mutual_connections' && networkInsights.mutualConnections.total > 0 && (
-                  <div className="mutual-connections-info">
-                    <span className="info-icon">🤝</span>
-                    <span className="info-text">
-                      Showing {networkInsights.mutualConnections.total} users who share connections with you
-                    </span>
-                  </div>
-                )}
-              </div>
-              
-              {activeContent.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-icon">👥</div>
-                  <h3>{searchQuery ? "No results found" : "No users to connect with"}</h3>
-                  <p>{searchQuery ? "Try a different filter or clear the search" : "All users are already connected or have pending requests"}</p>
-                  {searchQuery && (
-                    <button className="connect-btn" onClick={clearFilter} style={{marginTop: '20px', maxWidth: '200px'}}>
-                      Show All Users
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="users-grid">
-                  {activeContent.map(user => {
-                    const mutualCount = quickActionFilter === 'mutual_connections' ? 
-                      calculateMutualConnections(user)?.length || 0 : 0;
-                    
-                    return (
-                      <div key={user._id} className="user-card">
-                        <div className="user-card-header">
-                          <div className="avatar-container">
-                            <img src={user.profilePhoto || "https://via.placeholder.com/80"} alt={user.name} className="user-avatar" />
-                          </div>
-                          <div className="linkedin-details">
-                            <h3 className="user-name">{user.name}</h3>
-                            <p className="user-role">{user.role}</p>
-                            <p className="user-department">{user.department || "No department"}</p>
-                            {user.company && <p className="user-company">{user.company}</p>}
-                            {mutualCount > 0 && (
-                              <div className="mutual-connections-badge">
-                                <span className="mutual-icon">🤝</span>
-                                <span className="mutual-count">{mutualCount} mutual connection{mutualCount !== 1 ? 's' : ''}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <button 
-                          className="connect-btn" 
-                          onClick={() => handleNetworkAction("request", user._id, user.name, user)}
-                        >
-                          Connect
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "received" && (
-            <div className="tab-content active">
-              <div className="section-header">
-                <h2>{searchQuery || "Connection Requests"}</h2>
-                <p>{searchQuery || "Manage your incoming requests"}</p>
-              </div>
-              
-              {activeContent.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-icon">📥</div>
-                  <h3>No pending requests</h3>
-                  <p>When someone sends you a request, it will appear here</p>
-                </div>
-              ) : (
-                <div className="requests-list">
-                  {activeContent.map(request => (
-                    <div key={request._id} className="request-card">
-                      <div className="avatar-container">
-                        <img src={request.profilePhoto || "https://via.placeholder.com/60"} alt={request.name} className="request-avatar" />
-                      </div>
-                      <div className="request-info">
-                        <h3 className="request-name">{request.name}</h3>
-                        <p className="request-details">{request.role} • {request.department || "No department"}</p>
-                        {request.bio && <p className="request-bio">{request.bio.length > 80 ? `${request.bio.substring(0, 80)}...` : request.bio}</p>}
-                      </div>
-                      <div className="request-actions">
-                        <button 
-                          className="accept-btn" 
-                          onClick={() => handleNetworkAction("accept", request._id, request.name, request)}
-                        >
-                          Accept
-                        </button>
-                        <button 
-                          className="reject-btn" 
-                          onClick={() => handleNetworkAction("reject", request._id, request.name)}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "sent" && (
-            <div className="tab-content active">
-              <div className="section-header">
-                <h2>Sent Requests</h2>
-                <p>Your outgoing connection requests</p>
-              </div>
-              
-              {activeContent.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-icon">📤</div>
-                  <h3>No sent requests</h3>
-                  <p>Connect with people to grow your network</p>
-                </div>
-              ) : (
-                <div className="sent-list">
-                  {activeContent.map(request => (
-                    <div key={request._id} className="sent-card">
-                      <div className="avatar-container">
-                        <img src={request.profilePhoto || "https://via.placeholder.com/60"} alt={request.name} className="sent-avatar" />
-                      </div>
-                      <div className="sent-info">
-                        <h3 className="sent-name">{request.name}</h3>
-                        <p className="sent-details">{request.role} • {request.department || "No department"}</p>
-                        <div className="sent-status">
-                          <span className="status-icon">⏳</span>
-                          <span className="status-text">Pending</span>
-                        </div>
-                      </div>
-                      <button 
-                        className="cancel-btn" 
-                        onClick={() => handleNetworkAction("cancel", request._id, request.name)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "connections" && (
-            <div className="tab-content active">
-              <div className="section-header">
-                <h2>{searchQuery || "Your Connections"}</h2>
-                <p>{searchQuery || "Manage your professional network"}</p>
-                {quickActionFilter === 'recent_connections' && (
-                  <div className="section-subtitle">
-                    <span className="subtitle-icon">🕒</span>
-                    Showing most recent connections first
-                  </div>
-                )}
-              </div>
-              
-              {activeContent.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-icon">🤝</div>
-                  <h3>No connections yet</h3>
-                  <p>Start building your professional network</p>
-                  <button className="connect-btn" onClick={() => setActiveTab("people")} style={{marginTop: '20px'}}>
-                    Discover People to Connect With
-                  </button>
-                </div>
-              ) : (
-                <div className="connections-grid">
-                  {activeContent.map(connection => {
-                    const connectionDateDisplay = getConnectionDateDisplay(connection);
-                    
-                    return (
-                      <div key={connection._id} className="connection-card">
-                        <div className="connection-left">
-                          <img 
-                            src={connection.profilePhoto || "https://via.placeholder.com/80"} 
-                            alt={connection.name} 
-                            className="connection-avatar" 
-                          />
-                          <div className="connection-info">
-                            <div className="connection-name">{connection.name}</div>
-                            <div className="connection-role">{connection.role}</div>
-                            <div className="connection-department">{connection.department || "No department"}</div>
-                            {connection.company && <div className="connection-company">{connection.company}</div>}
-                            {connectionDateDisplay && (
-                              <div className="connection-date">
-                                <span className="date-icon">📅</span>
-                                <span className="date-text">Connected {connectionDateDisplay}</span>
-                              </div>
-                            )}
-                            {connection.skills?.length > 0 && (
-                              <div className="connection-skills">
-                                {connection.skills.slice(0, 3).map((skill, idx) => 
-                                  <span key={idx} className="skill-tag">{skill}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="connection-actions">
-                          <button 
-                            className="remove-btn" 
-                            onClick={() => {
-                              if (window.confirm(`Remove ${connection.name} from your connections?`)) {
-                                handleNetworkAction("remove", connection._id, connection.name, connection);
-                              }
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 🔵 SIDEBAR */}
-        <aside className="network-sidebar">
-          <div className="sidebar-section">
-            <h3>Network Insights</h3>
-            {[
-              ["📈", "Network Growth", `${networkInsights.networkGrowth.total} connections`, () => setShowNetworkGrowthModal(true)],
-              ["🎯", "Common Fields", networkInsights.commonFields.topDepartment, () => setShowCommonFieldsModal(true)],
-              ["🔧", "Top Shared Skills", networkInsights.topSkills.topSkill, () => setShowTopSkillsModal(true)],
-            ].map(([icon, title, value, onClick], idx) => (
-              <div key={idx} className="insight-item clickable" onClick={onClick}>
-                <span className="insight-icon">{icon}</span>
-                <div className="insight-content">
-                  <strong>{title}</strong>
-                  <span className="insight-value">{value}</span>
-                </div>
-                <span className="insight-arrow">→</span>
-              </div>
-            ))}
-          </div>
-        </aside>
-      </main>
     </div>
   );
 }
