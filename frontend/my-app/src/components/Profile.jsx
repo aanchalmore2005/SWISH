@@ -4,13 +4,13 @@ import "../styles/Profile.css";
 import ExploreSearch from "../components/ExploreSearch";
 import "../styles/ExploreSearch.css";
 import axios from "axios";
-import PostModal from "../components/PostModal"; // or the correct path
+import PostModal from "../components/PostModal";
+import Navbar from "../components/Navbar";
 
 function Profile() {
-
-const [postModalOpen, setPostModalOpen] = useState(false);
-const [selectedPostForModal, setSelectedPostForModal] = useState(null);
-const [allUsers, setAllUsers] = useState([]);
+  const [postModalOpen, setPostModalOpen] = useState(false);
+  const [selectedPostForModal, setSelectedPostForModal] = useState(null);
+  const [allUsers, setAllUsers] = useState([]);
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -30,7 +30,7 @@ const [allUsers, setAllUsers] = useState([]);
   const [connections, setConnections] = useState([]);
   const [userPosts, setUserPosts] = useState([]);
   const [userActivity, setUserActivity] = useState([]);
-  const [activeTab, setActiveTab] = useState("posts"); // "posts", "activity", "about"
+  const [activeTab, setActiveTab] = useState("posts");
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [showAllPosts, setShowAllPosts] = useState(false);
@@ -69,7 +69,6 @@ const [allUsers, setAllUsers] = useState([]);
     const userObj = JSON.parse(userData);
     setUser(userObj);
     
-    // Initialize form data with user data
     setFormData({
       name: userObj.name || "",
       email: userObj.email || "",
@@ -91,7 +90,6 @@ const [allUsers, setAllUsers] = useState([]);
       setPhotoPreview(userObj.profilePhoto);
     }
 
-    // Fetch all data
     fetchNotificationCount();
     fetchNetworkStats();
     fetchUserConnections();
@@ -100,224 +98,207 @@ const [allUsers, setAllUsers] = useState([]);
     fetchAllUsers(); 
   }, [navigate]);
 
-  // Open modal when clicking comments button
-const openPostModal = (post) => {
-  setSelectedPostForModal(post);
-  setPostModalOpen(true);
-};
+  const openPostModal = (post) => {
+    setSelectedPostForModal(post);
+    setPostModalOpen(true);
+  };
 
-// Close modal
-const closePostModal = () => {
-  setSelectedPostForModal(null);
-  setPostModalOpen(false);
-};
+  const closePostModal = () => {
+    setSelectedPostForModal(null);
+    setPostModalOpen(false);
+  };
 
-// Fetch all users (for showing who liked)
-const fetchAllUsers = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch('http://localhost:5000/api/users', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (response.ok) {
-      const users = await response.json();
-      setAllUsers(users);
+  const fetchAllUsers = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const users = await response.json();
+        setAllUsers(users);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
     }
-  } catch (error) {
-    console.error('Error fetching users:', error);
-  }
-};
+  };
 
-// Handle like from modal
-const handleLikePost = async (postId) => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:5000/api/posts/${postId}/like`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
+  const handleLikePost = async (postId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/like`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-    if (response.ok) {
-      const updatedPost = await response.json();
-      
-      // Update in user posts list
-      setUserPosts(prevPosts => 
-        prevPosts.map(post => 
-          post._id === postId ? updatedPost : post
-        )
-      );
-      
-      // Update in selected post (full view)
-      if (selectedPost && selectedPost._id === postId) {
-        setSelectedPost(updatedPost);
+      if (response.ok) {
+        const updatedPost = await response.json();
+        setUserPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === postId ? updatedPost : post
+          )
+        );
+        
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(updatedPost);
+        }
+        
+        if (selectedPostForModal && selectedPostForModal._id === postId) {
+          setSelectedPostForModal(updatedPost);
+        }
       }
-      
-      // Update in modal
-      if (selectedPostForModal && selectedPostForModal._id === postId) {
-        setSelectedPostForModal(updatedPost);
-      }
+    } catch (error) {
+      console.error('Error liking post:', error);
     }
-  } catch (error) {
-    console.error('Error liking post:', error);
-  }
-};
+  };
 
-// Add comment from modal
-const handleAddCommentFromModal = async (postId, commentText) => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:5000/api/posts/${postId}/comment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ content: commentText })
-    });
+  const handleAddCommentFromModal = async (postId, commentText) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/comment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: commentText })
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      
-      setUserPosts(prevPosts => 
-        prevPosts.map(post => 
-          post._id === postId ? data.post : post
-        )
-      );
-      
-      if (selectedPost && selectedPost._id === postId) {
-        setSelectedPost(data.post);
+      if (response.ok) {
+        const data = await response.json();
+        setUserPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === postId ? data.post : post
+          )
+        );
+        
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(data.post);
+        }
+        
+        if (selectedPostForModal && selectedPostForModal._id === postId) {
+          setSelectedPostForModal(data.post);
+        }
+        
+        setSuccess('Comment added!');
+        setTimeout(() => setSuccess(""), 2000);
+        return data.post;
       }
-      
-      if (selectedPostForModal && selectedPostForModal._id === postId) {
-        setSelectedPostForModal(data.post);
-      }
-      
-      setSuccess('Comment added!');
-      setTimeout(() => setSuccess(""), 2000);
-      return data.post;
+    } catch (error) {
+      setError('Failed to add comment');
+      return null;
     }
-  } catch (error) {
-    setError('Failed to add comment');
-    return null;
-  }
-};
+  };
 
-// Edit comment from modal
-const handleEditCommentFromModal = async (postId, commentId, text) => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ content: text })
-    });
+  const handleEditCommentFromModal = async (postId, commentId, text) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: text })
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      
-      setUserPosts(prevPosts => 
-        prevPosts.map(post => 
-          post._id === postId ? data.post : post
-        )
-      );
-      
-      if (selectedPost && selectedPost._id === postId) {
-        setSelectedPost(data.post);
+      if (response.ok) {
+        const data = await response.json();
+        setUserPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === postId ? data.post : post
+          )
+        );
+        
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(data.post);
+        }
+        
+        if (selectedPostForModal && selectedPostForModal._id === postId) {
+          setSelectedPostForModal(data.post);
+        }
+        
+        setSuccess('Comment updated!');
+        setTimeout(() => setSuccess(""), 2000);
+        return data.post;
       }
-      
-      if (selectedPostForModal && selectedPostForModal._id === postId) {
-        setSelectedPostForModal(data.post);
-      }
-      
-      setSuccess('Comment updated!');
-      setTimeout(() => setSuccess(""), 2000);
-      return data.post;
+    } catch (error) {
+      setError('Failed to update comment');
+      return null;
     }
-  } catch (error) {
-    setError('Failed to update comment');
-    return null;
-  }
-};
+  };
 
-// Delete comment from modal
-const handleDeleteCommentFromModal = async (postId, commentId) => {
-  if (!window.confirm('Delete this comment?')) return;
+  const handleDeleteCommentFromModal = async (postId, commentId) => {
+    if (!window.confirm('Delete this comment?')) return;
 
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      
-      setUserPosts(prevPosts => 
-        prevPosts.map(post => 
-          post._id === postId ? data.post : post
-        )
-      );
-      
-      if (selectedPost && selectedPost._id === postId) {
-        setSelectedPost(data.post);
+      if (response.ok) {
+        const data = await response.json();
+        setUserPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === postId ? data.post : post
+          )
+        );
+        
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(data.post);
+        }
+        
+        if (selectedPostForModal && selectedPostForModal._id === postId) {
+          setSelectedPostForModal(data.post);
+        }
+        
+        setSuccess('Comment deleted!');
+        setTimeout(() => setSuccess(""), 2000);
+        return data.post;
       }
-      
-      if (selectedPostForModal && selectedPostForModal._id === postId) {
-        setSelectedPostForModal(data.post);
-      }
-      
-      setSuccess('Comment deleted!');
-      setTimeout(() => setSuccess(""), 2000);
-      return data.post;
+    } catch (error) {
+      setError('Failed to delete comment');
+      return null;
     }
-  } catch (error) {
-    setError('Failed to delete comment');
-    return null;
-  }
-};
+  };
 
-// Like comment from modal
-const handleLikeCommentFromModal = async (postId, commentId) => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}/like`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+  const handleLikeCommentFromModal = async (postId, commentId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/comments/${commentId}/like`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      
-      setUserPosts(prevPosts => 
-        prevPosts.map(post => 
-          post._id === postId ? data.post : post
-        )
-      );
-      
-      if (selectedPost && selectedPost._id === postId) {
-        setSelectedPost(data.post);
+      if (response.ok) {
+        const data = await response.json();
+        setUserPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === postId ? data.post : post
+          )
+        );
+        
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(data.post);
+        }
+        
+        if (selectedPostForModal && selectedPostForModal._id === postId) {
+          setSelectedPostForModal(data.post);
+        }
+        
+        return data.post;
       }
-      
-      if (selectedPostForModal && selectedPostForModal._id === postId) {
-        setSelectedPostForModal(data.post);
-      }
-      
-      return data.post;
+    } catch (error) {
+      setError('Failed to like comment');
+      return null;
     }
-  } catch (error) {
-    setError('Failed to like comment');
-    return null;
-  }
-};
+  };
 
-  // Fetch notification count
   const fetchNotificationCount = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -331,7 +312,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     }
   };
 
-  // Fetch network stats
   const fetchNetworkStats = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -347,7 +327,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     }
   };
 
-  // Fetch user connections
   const fetchUserConnections = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -356,14 +335,13 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
       });
       const data = await response.json();
       if (data.success && data.connections) {
-        setConnections(data.connections.slice(0, 9)); // Show only 9 for preview
+        setConnections(data.connections.slice(0, 9));
       }
     } catch (error) {
       console.error("Failed to fetch connections:", error);
     }
   };
 
-  // Fetch user posts
   const fetchUserPosts = async () => {
     try {
       setLoadingPosts(true);
@@ -376,7 +354,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
         const data = await response.json();
         setUserPosts(data);
         
-        // Calculate total likes from posts
         let totalLikes = 0;
         data.forEach(post => {
           totalLikes += post.likes?.length || 0;
@@ -391,7 +368,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     }
   };
 
-  // Fetch user activity (likes and comments)
   const fetchUserActivity = async () => {
     try {
       setLoadingActivity(true);
@@ -414,16 +390,10 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     }
   };
 
-  // Handler for user selected from search
   const handleUserSelectFromSearch = (selectedUser) => {
     if (selectedUser && selectedUser._id) {
       navigate(`/profile/${selectedUser._id}`); 
     }
-  };
-
-  // Handle notification click
-  const handleClickNotification = () => {
-    navigate("/notifications");
   };
 
   const handlePhotoUpload = (event) => {
@@ -441,7 +411,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
 
       setFormData({ ...formData, profilePhoto: file });
       
-      // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
         setPhotoPreview(e.target.result);
@@ -476,7 +445,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     });
   };
 
-  // Upload photo to server
   const uploadProfilePhoto = async (file) => {
     if (!file) return null;
     
@@ -507,7 +475,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     }
   };
 
-  // Update profile function
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -518,14 +485,12 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
       const token = localStorage.getItem('token');
       let photoUrl = user.profilePhoto;
       
-      // Upload new photo if one was selected
       if (formData.profilePhoto && typeof formData.profilePhoto !== 'string') {
         const uploadedUrl = await uploadProfilePhoto(formData.profilePhoto);
         if (uploadedUrl) {
           photoUrl = uploadedUrl;
         }
       } else if (formData.profilePhoto === null) {
-        // If photo was removed
         photoUrl = null;
       }
       
@@ -556,15 +521,12 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
       const data = await response.json();
 
       if (response.ok) {
-        // Update local storage with new user data
         const updatedUser = { ...user, ...formData, profilePhoto: photoUrl ,isPrivate: formData.isPrivate };
         localStorage.setItem('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
         setIsEditing(false);
         setSuccess('Profile updated successfully!');
         setTimeout(() => setSuccess(""), 3000);
-        
-        // Refresh stats
         fetchNetworkStats();
       } else {
         setError(data.message || 'Failed to update profile');
@@ -575,12 +537,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate("/");
   };
 
   const getRoleDisplay = () => {
@@ -598,17 +554,16 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
         <img 
           src={userData.profilePhoto} 
           alt={userData.name} 
-          className="user-avatar-img"
+          className="profile-user-avatar-img"
         />
       );
     }
-    return <span className="avatar-initial">{userData?.name?.charAt(0).toUpperCase() || "U"}</span>;
+    return <span className="profile-avatar-initial">{userData?.name?.charAt(0).toUpperCase() || "U"}</span>;
   };
 
-  // Calculate profile completion percentage
   const calculateProfileCompletion = () => {
     let score = 0;
-    const totalFields = 8; // name, email, contact, bio, skills, profilePhoto, role-specific fields
+    const totalFields = 8;
     
     if (user?.name) score++;
     if (user?.email) score++;
@@ -624,7 +579,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     return Math.round((score / totalFields) * 100);
   };
 
-  // Handle post click (open full post view in profile)
   const handlePostClick = (post) => {
     setSelectedPost(post);
     setIsViewingPost(true);
@@ -632,9 +586,7 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     setEditPostContent("");
   };
 
-  // Handle activity click (go to feed and highlight)
   const handleActivityClick = (postId) => {
-    // Store post ID to highlight
     const highlightData = {
       postId: postId,
       timestamp: Date.now(),
@@ -642,10 +594,8 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     };
     localStorage.setItem('searchHighlightedPost', JSON.stringify(highlightData));
     
-    // Navigate to feed
     navigate("/feed");
     
-    // Trigger refresh if needed
     if (window.triggerFeedHighlight) {
       setTimeout(() => {
         window.triggerFeedHighlight();
@@ -653,7 +603,6 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     }
   };
 
-  // Handle delete post
   const handleDeletePost = async (postId) => {
     if (!window.confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
       return;
@@ -673,10 +622,8 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
         setSuccess('Post deleted successfully!');
         setTimeout(() => setSuccess(""), 3000);
         
-        // Refresh stats
         setStats(prev => ({ ...prev, posts: prev.posts - 1 }));
         
-        // Close post view if open
         if (selectedPost && selectedPost._id === postId) {
           setIsViewingPost(false);
           setSelectedPost(null);
@@ -690,66 +637,60 @@ const handleLikeCommentFromModal = async (postId, commentId) => {
     }
   };
 
-  // Start editing post
   const handleEditPost = (post) => {
     setEditingPost(post);
     setEditPostContent(post.content);
   };
 
-// Save edited post
-const handleSaveEdit = async () => {
-  if (!editingPost || !editPostContent.trim()) return;
+  const handleSaveEdit = async () => {
+    if (!editingPost || !editPostContent.trim()) return;
 
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:5000/api/posts/${editingPost._id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        content: editPostContent.trim()
-      })
-    });
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/posts/${editingPost._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          content: editPostContent.trim()
+        })
+      });
 
-    if (response.ok) {
-      const updatedPost = await response.json();
-      
-      // Update posts list
-      setUserPosts(prevPosts => 
-        prevPosts.map(post => 
-          post._id === editingPost._id ? {
-            ...post,
+      if (response.ok) {
+        const updatedPost = await response.json();
+        setUserPosts(prevPosts => 
+          prevPosts.map(post => 
+            post._id === editingPost._id ? {
+              ...post,
+              content: editPostContent.trim(),
+              updatedAt: new Date()
+            } : post
+          )
+        );
+        
+        if (selectedPost && selectedPost._id === editingPost._id) {
+          setSelectedPost({
+            ...selectedPost,
             content: editPostContent.trim(),
             updatedAt: new Date()
-          } : post
-        )
-      );
-      
-      // Update selected post if open
-      if (selectedPost && selectedPost._id === editingPost._id) {
-        setSelectedPost({
-          ...selectedPost,
-          content: editPostContent.trim(),
-          updatedAt: new Date()
-        });
+          });
+        }
+        
+        setEditingPost(null);
+        setEditPostContent("");
+        setSuccess('Post updated successfully!');
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        const data = await response.json();
+        setError(data.message || 'Failed to update post');
       }
-      
-      setEditingPost(null);
-      setEditPostContent("");
-      setSuccess('Post updated successfully!');
-      setTimeout(() => setSuccess(""), 3000);
-    } else {
-      const data = await response.json();
-      setError(data.message || 'Failed to update post');
+    } catch (error) {
+      setError('Network error: Unable to update post');
     }
-  } catch (error) {
-    setError('Network error: Unable to update post');
-  }
-};
+  };
 
-  // Cancel editing
   const handleCancelEdit = () => {
     setEditingPost(null);
     setEditPostContent("");
@@ -757,68 +698,27 @@ const handleSaveEdit = async () => {
 
   if (!user) {
     return (
-      <div className="feed-container">
-        <header className="feed-header">
-          <div className="header-left">
-            <div className="logo" onClick={() => navigate("/feed")}>💼 Swish</div>
-            <div className="feed-search-wrapper">
-              <ExploreSearch onUserSelect={handleUserSelectFromSearch} />
-            </div>
-            <div className="nav-items">
-              <button className="nav-btn" onClick={() => navigate("/feed")}>🏠 Feed</button>
-              <button className="nav-btn active">👤 Profile</button>
-              <button className="nav-btn" onClick={() => navigate("/network")}>👥 Network</button>
-              <button className="nav-btn" onClick={() => navigate("/Explore")}>🔥 Explore</button>
-              <button 
-                className={`nav-btn notification-bell-btn`}
-                onClick={handleClickNotification}
-                title="Notifications"
-              >
-                🔔 Notifications
-                {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
-              </button>
-            </div>
-          </div>
-          <div className="header-right">
-            <div className="user-info">
-              <span className="user-name">Welcome, {user?.name || "User"}</span>
-              <div 
-                className="user-avatar" 
-                title="View Profile"
-                onClick={() => navigate("/profile")}
-              >
-                {getUserAvatar(user)}
-              </div>
-            </div>
-            {user?.role === 'admin' && (
-              <button className="admin-btn" onClick={() => navigate("/admin")}>👑 Admin</button>
-            )}
-            <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
-          </div>
-        </header>
-        <div className="loading-container">
-          <div className="loading-spinner">Loading...</div>
+      <div className="profile-page-root">
+        <Navbar />
+        <div className="profile-loading-container">
+          <div className="profile-loading-spinner"></div>
+          <p>Loading Profile...</p>
         </div>
       </div>
     );
   }
 
   const profileCompletion = calculateProfileCompletion();
-
-  // Display posts (limited to 3 unless showAllPosts is true)
   const displayedPosts = showAllPosts ? userPosts : userPosts.slice(0, 3);
-
-  // Display activity (limited to 4 unless showAllActivity is true)
   const displayedActivity = showAllActivity ? userActivity : userActivity.slice(0, 4);
 
-  // Render "My Posts" Tab
   const renderPostsTab = () => (
-    <div className="my-posts-tab">
+    <div className="profile-main-content">
       {isViewingPost && selectedPost ? (
-        <div className="post-full-view">
-          <div className="post-full-header">
+        <div className="profile-post-full-view">
+          <div className="profile-post-full-header">
             <button 
-              className="back-to-posts-btn"
+              className="profile-back-to-posts-btn"
               onClick={() => {
                 setIsViewingPost(false);
                 setSelectedPost(null);
@@ -830,14 +730,14 @@ const handleSaveEdit = async () => {
             <h3>Your Post</h3>
           </div>
           
-          <div className="post-full-card">
-            <div className="post-full-user">
-              <div className="user-avatar-small">
+          <div className="profile-post-full-card">
+            <div className="profile-post-full-user">
+              <div className="profile-user-avatar-small">
                 {getUserAvatar(user)}
               </div>
-              <div className="user-info-small">
-                <div className="user-name-small">{user.name}</div>
-                <div className="post-time-full">
+              <div className="profile-user-info-small">
+                <div className="profile-user-name-small">{user.name}</div>
+                <div className="profile-post-time-full">
                   {new Date(selectedPost.createdAt).toLocaleDateString('en-US', {
                     month: 'long',
                     day: 'numeric',
@@ -850,23 +750,23 @@ const handleSaveEdit = async () => {
             </div>
             
             {editingPost && editingPost._id === selectedPost._id ? (
-              <div className="edit-post-section">
+              <div className="profile-edit-post-section">
                 <textarea
-                  className="edit-post-input"
+                  className="profile-edit-post-input"
                   value={editPostContent}
                   onChange={(e) => setEditPostContent(e.target.value)}
                   rows={4}
                   placeholder="Edit your post..."
                 />
-                <div className="edit-post-actions">
+                <div className="profile-edit-post-actions">
                   <button 
-                    className="cancel-edit-btn"
+                    className="profile-cancel-edit-btn"
                     onClick={handleCancelEdit}
                   >
                     Cancel
                   </button>
                   <button 
-                    className="save-edit-btn"
+                    className="profile-save-edit-btn"
                     onClick={handleSaveEdit}
                     disabled={!editPostContent.trim()}
                   >
@@ -875,22 +775,22 @@ const handleSaveEdit = async () => {
                 </div>
               </div>
             ) : (
-              <div className="post-content-full">
+              <div className="profile-post-content-full">
                 <p>{selectedPost.content}</p>
                 
                 {selectedPost.media && selectedPost.media.length > 0 && (
-                  <div className="post-media-full">
+                  <div className="profile-post-media-full">
                     {selectedPost.media.map((media, index) => (
                       media.type === 'image' ? (
                         <img 
                           key={index}
                           src={media.url} 
                           alt={`Post media ${index + 1}`}
-                          className="post-media-image"
+                          className="profile-post-media-image"
                         />
                       ) : (
-                        <div key={index} className="post-media-video">
-                          <video controls className="post-video-player">
+                        <div key={index} className="profile-post-media-video">
+                          <video controls className="profile-post-video-player">
                             <source src={media.url} type={`video/${media.format}`} />
                           </video>
                         </div>
@@ -900,17 +800,17 @@ const handleSaveEdit = async () => {
                 )}
                 
                 {selectedPost.type === 'event' && selectedPost.event && (
-                  <div className="post-event-full">
-                    <div className="event-full-header">
-                      <span className="event-full-tag">📅 Event</span>
-                      <h4 className="event-full-title">{selectedPost.event.title}</h4>
+                  <div className="profile-post-event-full">
+                    <div className="profile-event-full-header">
+                      <span className="profile-event-full-tag">📅 Event</span>
+                      <h4 className="profile-event-full-title">{selectedPost.event.title}</h4>
                     </div>
                     {selectedPost.event.description && (
-                      <p className="event-full-description">{selectedPost.event.description}</p>
+                      <p className="profile-event-full-description">{selectedPost.event.description}</p>
                     )}
-                    <div className="event-full-details">
-                      <div className="event-detail">
-                        <span className="event-icon">📅</span>
+                    <div className="profile-event-full-details">
+                      <div className="profile-event-detail">
+                        <span className="profile-event-icon">📅</span>
                         <span>{new Date(selectedPost.event.dateTime).toLocaleDateString('en-US', { 
                           weekday: 'long', 
                           month: 'long', 
@@ -918,15 +818,15 @@ const handleSaveEdit = async () => {
                           year: 'numeric'
                         })}</span>
                       </div>
-                      <div className="event-detail">
-                        <span className="event-icon">🕒</span>
+                      <div className="profile-event-detail">
+                        <span className="profile-event-icon">🕒</span>
                         <span>{new Date(selectedPost.event.dateTime).toLocaleTimeString('en-US', { 
                           hour: '2-digit', 
                           minute: '2-digit' 
                         })}</span>
                       </div>
-                      <div className="event-detail">
-                        <span className="event-icon">📍</span>
+                      <div className="profile-event-detail">
+                        <span className="profile-event-icon">📍</span>
                         <span>{selectedPost.event.location}</span>
                       </div>
                     </div>
@@ -934,61 +834,61 @@ const handleSaveEdit = async () => {
                 )}
                 
                 {selectedPost.type === 'poll' && selectedPost.poll && (
-                  <div className="post-poll-full">
-                    <div className="poll-full-header">
-                      <span className="poll-full-tag">📊 Poll</span>
-                      <h4 className="poll-full-question">{selectedPost.poll.question}</h4>
+                  <div className="profile-post-poll-full">
+                    <div className="profile-poll-full-header">
+                      <span className="profile-poll-full-tag">📊 Poll</span>
+                      <h4 className="profile-poll-full-question">{selectedPost.poll.question}</h4>
                     </div>
-                    <div className="poll-full-stats">
-                      <span className="poll-total-votes">{selectedPost.poll.totalVotes || 0} votes</span>
+                    <div className="profile-poll-full-stats">
+                      <span className="profile-poll-total-votes">{selectedPost.poll.totalVotes || 0} votes</span>
                     </div>
                   </div>
                 )}
               </div>
             )}
             
-            <div className="post-stats-full">
-              <div className="stat-full">
-                <span className="stat-icon-full">👍</span>
-                <span className="stat-count-full">{selectedPost.likes?.length || 0}</span>
-                <span className="stat-label-full">Likes</span>
+            <div className="profile-post-stats-full">
+              <div className="profile-stat-full">
+                <span className="profile-stat-icon-full">👍</span>
+                <span className="profile-stat-count-full">{selectedPost.likes?.length || 0}</span>
+                <span className="profile-stat-label-full">Likes</span>
               </div>
-              <div className="stat-full">
-                  <button 
-                    className="stat-button-comment-full"
-                    onClick={() => openPostModal(selectedPost)}
-                    title="View comments and likes"
-                  >
-                    <span className="stat-icon-full">💬</span>
-                    <span className="stat-count-full">{selectedPost.comments?.length || 0}</span>
-                    <span className="stat-label-full">Comments</span>
-                  </button>
-                </div>
+              <div className="profile-stat-full">
+                <button 
+                  className="profile-stat-button-comment-full"
+                  onClick={() => openPostModal(selectedPost)}
+                  title="View comments and likes"
+                >
+                  <span className="profile-stat-icon-full">💬</span>
+                  <span className="profile-stat-count-full">{selectedPost.comments?.length || 0}</span>
+                  <span className="profile-stat-label-full">Comments</span>
+                </button>
+              </div>
               {selectedPost.type === 'event' && (
-                <div className="stat-full">
-                  <span className="stat-icon-full">👥</span>
-                  <span className="stat-count-full">{selectedPost.event?.rsvpCount || 0}</span>
-                  <span className="stat-label-full">Going</span>
+                <div className="profile-stat-full">
+                  <span className="profile-stat-icon-full">👥</span>
+                  <span className="profile-stat-count-full">{selectedPost.event?.rsvpCount || 0}</span>
+                  <span className="profile-stat-label-full">Going</span>
                 </div>
               )}
               {selectedPost.type === 'poll' && (
-                <div className="stat-full">
-                  <span className="stat-icon-full">📊</span>
-                  <span className="stat-count-full">{selectedPost.poll?.totalVotes || 0}</span>
-                  <span className="stat-label-full">Votes</span>
+                <div className="profile-stat-full">
+                  <span className="profile-stat-icon-full">📊</span>
+                  <span className="profile-stat-count-full">{selectedPost.poll?.totalVotes || 0}</span>
+                  <span className="profile-stat-label-full">Votes</span>
                 </div>
               )}
             </div>
             
-            <div className="post-actions-full">
+            <div className="profile-post-actions-full">
               <button 
-                className="action-btn-full edit-btn"
+                className="profile-action-btn-full edit-btn"
                 onClick={() => handleEditPost(selectedPost)}
               >
                 ✏️ Edit Post
               </button>
               <button 
-                className="action-btn-full delete-btn"
+                className="profile-action-btn-full delete-btn"
                 onClick={() => handleDeletePost(selectedPost._id)}
               >
                 🗑️ Delete Post
@@ -998,10 +898,10 @@ const handleSaveEdit = async () => {
         </div>
       ) : (
         <>
-          <div className="tab-header">
+          <div className="profile-tab-header">
             <h3>📝 My Posts ({userPosts.length})</h3>
             <button 
-              className="refresh-btn"
+              className="profile-refresh-btn"
               onClick={fetchUserPosts}
               disabled={loadingPosts}
             >
@@ -1010,16 +910,16 @@ const handleSaveEdit = async () => {
           </div>
           
           {loadingPosts ? (
-            <div className="loading-posts">
-              <div className="loading-spinner">Loading your posts...</div>
+            <div className="profile-loading-posts">
+              <div className="profile-loading-spinner">Loading your posts...</div>
             </div>
           ) : userPosts.length === 0 ? (
-            <div className="no-posts">
-              <div className="no-posts-icon">📝</div>
+            <div className="profile-no-posts">
+              <div className="profile-no-posts-icon">📝</div>
               <h4>No posts yet</h4>
               <p>Share your first post with the campus community!</p>
               <button 
-                className="create-post-btn"
+                className="profile-create-post-btn"
                 onClick={() => navigate("/feed")}
               >
                 Create Your First Post
@@ -1027,84 +927,84 @@ const handleSaveEdit = async () => {
             </div>
           ) : (
             <>
-              <div className="posts-grid">
+              <div className="profile-posts-grid">
                 {displayedPosts.map(post => (
                   <div 
                     key={post._id} 
-                    className="post-card-mini"
+                    className="profile-post-card-mini"
                     onClick={() => handlePostClick(post)}
                   >
-                    <div className="post-card-header">
-                      <div className="post-date">
+                    <div className="profile-post-card-header">
+                      <div className="profile-post-date">
                         {new Date(post.createdAt).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric'
                         })}
                       </div>
-                      <div className="post-type-badge">
+                      <div className="profile-post-type-badge">
                         {post.type === 'event' && '📅 Event'}
                         {post.type === 'poll' && '📊 Poll'}
                         {post.type === 'text' && '📝 Post'}
                       </div>
                     </div>
                     
-                    <div className="post-content-mini">
+                    <div className="profile-post-content-mini">
                       <p>{post.content.length > 120 ? post.content.substring(0, 120) + '...' : post.content}</p>
                       
                       {post.media && post.media.length > 0 && (
-                        <div className="post-media-mini">
+                        <div className="profile-post-media-mini">
                           {post.media[0].type === 'image' ? (
                             <img 
                               src={post.media[0].url} 
                               alt="Post media" 
-                              className="post-media-thumbnail"
+                              className="profile-post-media-thumbnail"
                             />
                           ) : (
-                            <div className="video-thumbnail">
+                            <div className="profile-video-thumbnail">
                               <span>🎥 Video</span>
                             </div>
                           )}
                           {post.media.length > 1 && (
-                            <div className="media-count">+{post.media.length - 1} more</div>
+                            <div className="profile-media-count">+{post.media.length - 1} more</div>
                           )}
                         </div>
                       )}
                     </div>
                     
-                    <div className="post-stats-mini">
-                      <div className="stat-mini">
-                        <span className="stat-icon-mini">👍</span>
-                        <span className="stat-count">{post.likes?.length || 0}</span>
+                    <div className="profile-post-stats-mini">
+                      <div className="profile-stat-mini">
+                        <span className="profile-stat-icon-mini">👍</span>
+                        <span className="profile-stat-count">{post.likes?.length || 0}</span>
                       </div>
-                      <div className="stat-mini">
+                      <div className="profile-stat-mini">
                         <button 
-                          className="stat-button-comment"
+                          className="profile-stat-button-comment"
                           onClick={(e) => {
-                            e.stopPropagation(); // Don't open full post view
+                            e.stopPropagation();
                             openPostModal(post);
                           }}
                           title="View comments"
                         >
-                          <span className="stat-icon-mini">💬</span>
-                          <span className="stat-count">{post.comments?.length || 0}</span>
+                          <span className="profile-stat-icon-mini">💬</span>
+                          <span className="profile-stat-count">{post.comments?.length || 0}</span>
                         </button>
                       </div>
                       {post.type === 'event' && (
-                        <div className="stat-mini">
-                          <span className="stat-icon-mini">👥</span>
-                          <span className="stat-count">{post.event?.rsvpCount || 0}</span>
+                        <div className="profile-stat-mini">
+                          <span className="profile-stat-icon-mini">👥</span>
+                          <span className="profile-stat-count">{post.event?.rsvpCount || 0}</span>
                         </div>
                       )}
                       {post.type === 'poll' && (
-                        <div className="stat-mini">
-                          <span className="stat-icon-mini">📊</span>
-                          <span className="stat-count">{post.poll?.totalVotes || 0}</span>
+                        <div className="profile-stat-mini">
+                          <span className="profile-stat-icon-mini">📊</span>
+                          <span className="profile-stat-count">{post.poll?.totalVotes || 0}</span>
                         </div>
                       )}
                     </div>
                     
-                    <div className="post-click-hint">
+                    <div className="profile-post-click-hint">
                       Click to view full post • {post.type === 'event' ? 'Event' : post.type === 'poll' ? 'Poll' : 'Post'}
                     </div>
                   </div>
@@ -1112,9 +1012,9 @@ const handleSaveEdit = async () => {
               </div>
               
               {userPosts.length > 3 && (
-                <div className="view-all-section">
+                <div className="profile-view-all-section">
                   <button 
-                    className="view-all-btn"
+                    className="profile-view-all-btn"
                     onClick={() => setShowAllPosts(!showAllPosts)}
                   >
                     {showAllPosts ? '↑ Show Less' : `↓ View All Posts (${userPosts.length})`}
@@ -1128,13 +1028,12 @@ const handleSaveEdit = async () => {
     </div>
   );
 
-  // Render "My Activity" Tab
   const renderActivityTab = () => (
-    <div className="my-activity-tab">
-      <div className="tab-header">
+    <div className="profile-main-content">
+      <div className="profile-tab-header">
         <h3>📊 My Activity ({userActivity.length})</h3>
         <button 
-          className="refresh-btn"
+          className="profile-refresh-btn"
           onClick={fetchUserActivity}
           disabled={loadingActivity}
         >
@@ -1143,16 +1042,16 @@ const handleSaveEdit = async () => {
       </div>
       
       {loadingActivity ? (
-        <div className="loading-activity">
-          <div className="loading-spinner">Loading your activity...</div>
+        <div className="profile-loading-activity">
+          <div className="profile-loading-spinner">Loading your activity...</div>
         </div>
       ) : userActivity.length === 0 ? (
-        <div className="no-activity">
-          <div className="no-activity-icon">📊</div>
+        <div className="profile-no-activity">
+          <div className="profile-no-activity-icon">📊</div>
           <h4>No activity yet</h4>
           <p>Start interacting with posts by liking and commenting!</p>
           <button 
-            className="explore-btn"
+            className="profile-explore-btn"
             onClick={() => navigate("/feed")}
           >
             Explore Posts
@@ -1160,23 +1059,23 @@ const handleSaveEdit = async () => {
         </div>
       ) : (
         <>
-          <div className="activity-timeline">
+          <div className="profile-activity-timeline">
             {displayedActivity.map((activity, index) => (
               <div 
                 key={index} 
-                className={`activity-item ${activity.type}`}
+                className={`profile-activity-item ${activity.type}`}
                 onClick={() => handleActivityClick(activity.postId)}
               >
-                <div className="activity-icon-wrapper">
+                <div className="profile-activity-icon-wrapper">
                   {activity.type === 'like' ? (
-                    <div className="activity-icon-like">👍</div>
+                    <div className="profile-activity-icon-like">👍</div>
                   ) : (
-                    <div className="activity-icon-comment">💬</div>
+                    <div className="profile-activity-icon-comment">💬</div>
                   )}
                 </div>
                 
-                <div className="activity-content-wrapper">
-                  <div className="activity-text">
+                <div className="profile-activity-content-wrapper">
+                  <div className="profile-activity-text">
                     {activity.type === 'like' ? (
                       <>You liked <strong>{activity.postOwnerName}'s</strong> post</>
                     ) : (
@@ -1184,25 +1083,25 @@ const handleSaveEdit = async () => {
                     )}
                   </div>
                   
-                  <div className="activity-preview">
-                    <div className="post-preview">
+                  <div className="profile-activity-preview">
+                    <div className="profile-post-preview">
                       "{activity.postContent}"
                     </div>
                     {activity.type === 'comment' && (
-                      <div className="comment-preview">
+                      <div className="profile-comment-preview">
                         Your comment: "{activity.commentContent}"
                       </div>
                     )}
                   </div>
                   
-                  <div className="activity-meta">
-                    <span className="activity-type">
+                  <div className="profile-activity-meta">
+                    <span className="profile-activity-type">
                       {activity.type === 'like' ? 'Liked' : 'Commented'} • 
                       {activity.postType === 'event' && ' 📅 Event'}
                       {activity.postType === 'poll' && ' 📊 Poll'}
                       {activity.postType === 'text' && ' 📝 Post'}
                     </span>
-                    <span className="activity-time">
+                    <span className="profile-activity-time">
                       {new Date(activity.timestamp).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -1213,7 +1112,7 @@ const handleSaveEdit = async () => {
                   </div>
                 </div>
                 
-                <div className="activity-arrow">
+                <div className="profile-activity-arrow">
                   →
                 </div>
               </div>
@@ -1221,9 +1120,9 @@ const handleSaveEdit = async () => {
           </div>
           
           {userActivity.length > 4 && (
-            <div className="view-all-section">
+            <div className="profile-view-all-section">
               <button 
-                className="view-all-btn"
+                className="profile-view-all-btn"
                 onClick={() => setShowAllActivity(!showAllActivity)}
               >
                 {showAllActivity ? '↑ Show Less Activity' : `↓ View All Activity (${userActivity.length})`}
@@ -1235,345 +1134,344 @@ const handleSaveEdit = async () => {
     </div>
   );
 
-  // Render "About" Tab
   const renderAboutTab = () => (
-    <div className="profile-about-tab">
-      <div className="tab-header">
+    <div className="profile-main-content">
+      <div className="profile-tab-header">
         <h3>👤 Profile Information</h3>
         <button 
-          className="edit-profile-tab-btn"
+          className="profile-edit-profile-tab-btn"
           onClick={() => setIsEditing(!isEditing)}
         >
           {isEditing ? '✏️ Editing...' : '✏️ Edit Profile'}
         </button>
       </div>
       
-      <div className="profile-layout">
-        {/* Left Sidebar - Profile Info */}
-        <div className="profile-sidebar">
-          <div className="profile-card">
-            {/* Profile Photo Section */}
-            <div className="profile-photo-section">
-              {photoPreview ? (
-                <div className="photo-preview">
-                  <img src={photoPreview} alt="Profile" className="profile-image" />
-                  {isEditing && (
-                    <button 
-                      type="button" 
-                      className="remove-photo-btn"
-                      onClick={handleRemovePhoto}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="profile-image-placeholder">
-                  {user.name?.charAt(0).toUpperCase()}
-                </div>
-              )}
-              
-              {isEditing && (
-                <div className="photo-upload-actions">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handlePhotoUpload}
-                    accept="image/*"
-                    className="file-input"
-                    id="profilePhoto"
-                  />
-                  <label htmlFor="profilePhoto" className="upload-photo-btn">
-                    {uploadingPhoto ? '📤 Uploading...' : '📸 Change Photo'}
-                  </label>
-                  <p className="photo-hint">Max 5MB • JPG, PNG, GIF</p>
-                </div>
-              )}
-            </div>
-
-            {/* Profile Info */}
-            <div className="profile-info">
-              <h1 className="profile-name">{user.name}</h1>
-              <div className="profile-role">{getRoleDisplay()}</div>
-              <div className="profile-email">📧 {user.email}</div>
-              {user.contact && <div className="profile-contact">📞 {user.contact}</div>}
-            </div>
-
-            {/* Edit/Save Buttons */}
-            <div className="profile-actions">
-              {!isEditing ? (
-                <button 
-                  className="edit-profile-btn"
-                  onClick={() => setIsEditing(true)}
-                >
-                  ✏️ Edit Profile
-                </button>
-              ) : (
-                <div className="edit-actions">
+      <div className="profile-about-layout">
+        {/* Left Column - Personal Info */}
+        <div className="profile-personal-info-card">
+          <div className="profile-photo-section">
+            {photoPreview ? (
+              <div className="profile-photo-preview">
+                <img src={photoPreview} alt="Profile" className="profile-image" />
+                {isEditing && (
                   <button 
-                    className="cancel-btn"
-                    onClick={() => {
-                      setIsEditing(false);
-                      // Reset form data
-                      setFormData({
-                        name: user.name || "",
-                        email: user.email || "",
-                        contact: user.contact || "",
-                        bio: user.bio || "Passionate about technology and innovation. Always eager to learn and grow.",
-                        skills: user.skills || ["JavaScript", "React", "Node.js", "Python"],
-                        newSkill: "",
-                        studentId: user.studentId || "",
-                        department: user.department || "",
-                        year: user.year || "",
-                        employeeId: user.employeeId || "",
-                        facultyDepartment: user.facultyDepartment || "",
-                        designation: user.designation || "",
-                        profilePhoto: user.profilePhoto || null,
-                        isPrivate: Boolean(user.isPrivate) 
-                      });
-                      setPhotoPreview(user.profilePhoto || null);
-                    }}
+                    type="button" 
+                    className="profile-remove-photo-btn"
+                    onClick={handleRemovePhoto}
                   >
-                    Cancel
+                    ✕
                   </button>
-                  <button 
-                    className="save-profile-btn"
-                    onClick={handleUpdateProfile}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    {loading ? '💾 Saving...' : '💾 Save Changes'}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Bio Section */}
-            <div className="bio-section">
-              <h3>📝 About Me</h3>
-              {isEditing ? (
-                <textarea
-                  className="bio-input"
-                  value={formData.bio}
-                  onChange={(e) => setFormData({...formData, bio: e.target.value})}
-                  placeholder="Tell us about yourself..."
-                  rows="3"
-                  maxLength="500"
-                />
-              ) : (
-                <p className="bio-text">{formData.bio || "No bio yet. Tell us about yourself!"}</p>
-              )}
-            </div>
-
-            {/* Skills Section */}
-            <div className="skills-section">
-              <h3>🛠️ Skills & Expertise</h3>
-              <div className="skills-container">
-                {formData.skills.length > 0 ? (
-                  formData.skills.map((skill, index) => (
-                    <div key={index} className="skill-tag">
-                      {skill}
-                      {isEditing && (
-                        <button 
-                          className="remove-skill-btn"
-                          onClick={() => handleRemoveSkill(skill)}
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="no-skills">No skills added yet</p>
                 )}
               </div>
-              {isEditing && (
-                <div className="add-skill-section">
-                  <input
-                    type="text"
-                    className="skill-input"
-                    value={formData.newSkill}
-                    onChange={(e) => setFormData({...formData, newSkill: e.target.value})}
-                    placeholder="Add a skill (press Enter to add)..."
-                    onKeyPress={(e) => e.key === 'Enter' && handleAddSkill()}
-                  />
-                  <button className="add-skill-btn" onClick={handleAddSkill}>
-                    Add
-                  </button>
+            ) : (
+              <div className="profile-image-placeholder">
+                {user.name?.charAt(0).toUpperCase()}
+              </div>
+            )}
+            
+            {isEditing && (
+              <div className="profile-photo-upload-actions">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handlePhotoUpload}
+                  accept="image/*"
+                  className="profile-file-input"
+                  id="profilePhoto"
+                />
+                <label htmlFor="profilePhoto" className="profile-upload-photo-btn">
+                  {uploadingPhoto ? '📤 Uploading...' : '📸 Change Photo'}
+                </label>
+                <p className="profile-photo-hint">Max 5MB • JPG, PNG, GIF</p>
+              </div>
+            )}
+          </div>
+
+          <div className="profile-info-section">
+            <h1 className="profile-name">{user.name}</h1>
+            <div className="profile-role-badge">{getRoleDisplay()}</div>
+            <div className="profile-contact-info">
+              <div className="profile-contact-item">
+                <span className="profile-contact-icon">📧</span>
+                <span className="profile-contact-text">{user.email}</span>
+              </div>
+              {user.contact && (
+                <div className="profile-contact-item">
+                  <span className="profile-contact-icon">📞</span>
+                  <span className="profile-contact-text">{user.contact}</span>
                 </div>
               )}
             </div>
           </div>
+
+          <div className="profile-bio-section">
+            <h3>📝 About Me</h3>
+            {isEditing ? (
+              <textarea
+                className="profile-bio-input"
+                value={formData.bio}
+                onChange={(e) => setFormData({...formData, bio: e.target.value})}
+                placeholder="Tell us about yourself..."
+                rows="3"
+                maxLength="500"
+              />
+            ) : (
+              <p className="profile-bio-text">{formData.bio || "No bio yet. Tell us about yourself!"}</p>
+            )}
+          </div>
+
+          <div className="profile-skills-section">
+            <h3>🛠️ Skills & Expertise</h3>
+            <div className="profile-skills-container">
+              {formData.skills.length > 0 ? (
+                formData.skills.map((skill, index) => (
+                  <div key={index} className="profile-skill-tag">
+                    {skill}
+                    {isEditing && (
+                      <button 
+                        className="profile-remove-skill-btn"
+                        onClick={() => handleRemoveSkill(skill)}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="profile-no-skills">No skills added yet</p>
+              )}
+            </div>
+            {isEditing && (
+              <div className="profile-add-skill-section">
+                <input
+                  type="text"
+                  className="profile-skill-input"
+                  value={formData.newSkill}
+                  onChange={(e) => setFormData({...formData, newSkill: e.target.value})}
+                  placeholder="Add a skill (press Enter to add)..."
+                  onKeyPress={(e) => e.key === 'Enter' && handleAddSkill()}
+                />
+                <button className="profile-add-skill-btn" onClick={handleAddSkill}>
+                  Add
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Right Main Content - Profile Details */}
-        <div className="profile-main">
-          {/* Profile Details Form */}
-          <div className="profile-details-card">
-            <h3>📋 Profile Details</h3>
-            <div className="form-grid">
-              <div className="input-group">
-                <label>Full Name</label>
-                <input 
-                  type="text" 
-                  className="profile-input" 
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  disabled={!isEditing}
-                />
-              </div>
+        {/* Right Column - Form Details */}
+        <div className="profile-form-card">
+          <h3>📋 Profile Details</h3>
+          <div className="profile-form-grid">
+            <div className="profile-input-group">
+              <label>Full Name</label>
+              <input 
+                type="text" 
+                className="profile-input" 
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                disabled={!isEditing}
+              />
+            </div>
 
-              <div className="input-group">
-                <label>Email</label>
-                <input 
-                  type="email" 
-                  className="profile-input" 
-                  value={formData.email}
-                  disabled
-                  title="Email cannot be changed"
-                />
-              </div>
+            <div className="profile-input-group">
+              <label>Email</label>
+              <input 
+                type="email" 
+                className="profile-input" 
+                value={formData.email}
+                disabled
+                title="Email cannot be changed"
+              />
+            </div>
 
-              <div className="input-group">
-                <label>Contact Number</label>
-                <input 
-                  type="tel" 
-                  className="profile-input" 
-                  value={formData.contact}
-                  onChange={(e) => setFormData({...formData, contact: e.target.value})}
-                  disabled={!isEditing}
-                  placeholder="Enter your phone number"
-                />
-              </div>
+            <div className="profile-input-group">
+              <label>Contact Number</label>
+              <input 
+                type="tel" 
+                className="profile-input" 
+                value={formData.contact}
+                onChange={(e) => setFormData({...formData, contact: e.target.value})}
+                disabled={!isEditing}
+                placeholder="Enter your phone number"
+              />
+            </div>
 
-              {/* Student Specific Fields */}
-              {user.role === 'student' && (
-                <>
-                  <div className="input-group">
-                    <label>Student ID</label>
-                    <input 
-                      type="text" 
-                      className="profile-input" 
-                      value={formData.studentId}
-                      onChange={(e) => setFormData({...formData, studentId: e.target.value})}
-                      disabled={!isEditing}
-                      placeholder="Enter student ID"
-                    />
+            {/* Student Specific Fields */}
+            {user.role === 'student' && (
+              <>
+                <div className="profile-input-group">
+                  <label>Student ID</label>
+                  <input 
+                    type="text" 
+                    className="profile-input" 
+                    value={formData.studentId}
+                    onChange={(e) => setFormData({...formData, studentId: e.target.value})}
+                    disabled={!isEditing}
+                    placeholder="Enter student ID"
+                  />
+                </div>
+
+                <div className="profile-input-group">
+                  <label>Department</label>
+                  <select 
+                    className="profile-input"
+                    value={formData.department}
+                    onChange={(e) => setFormData({...formData, department: e.target.value})}
+                    disabled={!isEditing}
+                  >
+                    <option value="">Select Department</option>
+                    <option value="Computer Engineering">Computer Engineering</option>
+                    <option value="Information Technology">Information Technology</option>
+                    <option value="Electronics & Telecommunication">Electronics & Telecommunication</option>
+                    <option value="Mechanical Engineering">Mechanical Engineering</option>
+                    <option value="Civil Engineering">Civil Engineering</option>
+                  </select>
+                </div>
+
+                <div className="profile-input-group">
+                  <label>Academic Year</label>
+                  <select 
+                    className="profile-input"
+                    value={formData.year}
+                    onChange={(e) => setFormData({...formData, year: e.target.value})}
+                    disabled={!isEditing}
+                  >
+                    <option value="">Select Year</option>
+                    <option value="First Year">First Year</option>
+                    <option value="Second Year">Second Year</option>
+                    <option value="Third Year">Third Year</option>
+                    <option value="Fourth Year">Fourth Year</option>
+                    <option value="Postgraduate">Postgraduate</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            {/* Faculty Specific Fields */}
+            {user.role === 'faculty' && (
+              <>
+                <div className="profile-input-group">
+                  <label>Employee ID</label>
+                  <input 
+                    type="text" 
+                    className="profile-input" 
+                    value={formData.employeeId}
+                    onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
+                    disabled={!isEditing}
+                    placeholder="Enter employee ID"
+                  />
+                </div>
+
+                <div className="profile-input-group">
+                  <label>Department</label>
+                  <select 
+                    className="profile-input"
+                    value={formData.facultyDepartment}
+                    onChange={(e) => setFormData({...formData, facultyDepartment: e.target.value})}
+                    disabled={!isEditing}
+                  >
+                    <option value="">Select Department</option>
+                    <option value="Computer Engineering">Computer Engineering</option>
+                    <option value="Information Technology">Information Technology</option>
+                    <option value="Electronics & Telecommunication">Electronics & Telecommunication</option>
+                    <option value="Mechanical Engineering">Mechanical Engineering</option>
+                    <option value="Civil Engineering">Civil Engineering</option>
+                  </select>
+                </div>
+
+                <div className="profile-input-group">
+                  <label>Designation</label>
+                  <select 
+                    className="profile-input"
+                    value={formData.designation}
+                    onChange={(e) => setFormData({...formData, designation: e.target.value})}
+                    disabled={!isEditing}
+                  >
+                    <option value="">Select Designation</option>
+                    <option value="Professor">Professor</option>
+                    <option value="Associate Professor">Associate Professor</option>
+                    <option value="Assistant Professor">Assistant Professor</option>
+                    <option value="Head of Department">Head of Department</option>
+                    <option value="Lab Incharge">Lab Incharge</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            {/* Privacy Toggle */}
+            <div className="profile-input-group full-width">
+              <label>Account Privacy</label>
+              <div className="profile-privacy-toggle">
+                <label className="profile-privacy-switch">
+                  <input
+                    type="checkbox"
+                    checked={formData.isPrivate || false}
+                    onChange={(e) => setFormData({...formData, isPrivate: e.target.checked})}
+                    disabled={!isEditing}
+                  />
+                  <span className="profile-privacy-slider"></span>
+                </label>
+                <div className="profile-privacy-info">
+                  <div className="profile-privacy-title">
+                    {formData.isPrivate ? '🔒 Private Account' : '🌍 Public Account'}
                   </div>
-
-                  <div className="input-group">
-                    <label>Department</label>
-                    <select 
-                      className="profile-input"
-                      value={formData.department}
-                      onChange={(e) => setFormData({...formData, department: e.target.value})}
-                      disabled={!isEditing}
-                    >
-                      <option value="">Select Department</option>
-                      <option value="Computer Engineering">Computer Engineering</option>
-                      <option value="Information Technology">Information Technology</option>
-                      <option value="Electronics & Telecommunication">Electronics & Telecommunication</option>
-                      <option value="Mechanical Engineering">Mechanical Engineering</option>
-                      <option value="Civil Engineering">Civil Engineering</option>
-                    </select>
-                  </div>
-
-                  <div className="input-group">
-                    <label>Academic Year</label>
-                    <select 
-                      className="profile-input"
-                      value={formData.year}
-                      onChange={(e) => setFormData({...formData, year: e.target.value})}
-                      disabled={!isEditing}
-                    >
-                      <option value="">Select Year</option>
-                      <option value="First Year">First Year</option>
-                      <option value="Second Year">Second Year</option>
-                      <option value="Third Year">Third Year</option>
-                      <option value="Fourth Year">Fourth Year</option>
-                      <option value="Postgraduate">Postgraduate</option>
-                    </select>
-                  </div>
-                </>
-              )}
-
-              {/* Faculty Specific Fields */}
-              {user.role === 'faculty' && (
-                <>
-                  <div className="input-group">
-                    <label>Employee ID</label>
-                    <input 
-                      type="text" 
-                      className="profile-input" 
-                      value={formData.employeeId}
-                      onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
-                      disabled={!isEditing}
-                      placeholder="Enter employee ID"
-                    />
-                  </div>
-
-                  <div className="input-group">
-                    <label>Department</label>
-                    <select 
-                      className="profile-input"
-                      value={formData.facultyDepartment}
-                      onChange={(e) => setFormData({...formData, facultyDepartment: e.target.value})}
-                      disabled={!isEditing}
-                    >
-                      <option value="">Select Department</option>
-                      <option value="Computer Engineering">Computer Engineering</option>
-                      <option value="Information Technology">Information Technology</option>
-                      <option value="Electronics & Telecommunication">Electronics & Telecommunication</option>
-                      <option value="Mechanical Engineering">Mechanical Engineering</option>
-                      <option value="Civil Engineering">Civil Engineering</option>
-                    </select>
-                  </div>
-
-                  <div className="input-group">
-                    <label>Designation</label>
-                    <select 
-                      className="profile-input"
-                      value={formData.designation}
-                      onChange={(e) => setFormData({...formData, designation: e.target.value})}
-                      disabled={!isEditing}
-                    >
-                      <option value="">Select Designation</option>
-                      <option value="Professor">Professor</option>
-                      <option value="Associate Professor">Associate Professor</option>
-                      <option value="Assistant Professor">Assistant Professor</option>
-                      <option value="Head of Department">Head of Department</option>
-                      <option value="Lab Incharge">Lab Incharge</option>
-                    </select>
-                  </div>
-                </>
-              )}
-
-              {/* 👇 ADD PRIVACY TOGGLE RIGHT HERE 👇 */}
-              <div className="input-group full-width">
-                <label>Account Privacy</label>
-                <div className="privacy-toggle-profile">
-                  <label className="privacy-switch">
-                    <input
-                      type="checkbox"
-                      checked={formData.isPrivate || false}
-                      onChange={(e) => setFormData({...formData, isPrivate: e.target.checked})}
-                      disabled={!isEditing}
-                    />
-                    <span className="privacy-slider"></span>
-                  </label>
-                  <div className="privacy-info">
-                    <div className="privacy-title">
-                      {formData.isPrivate ? '🔒 Private Account' : '🌍 Public Account'}
-                    </div>
-                    <div className="privacy-description">
-                      {formData.isPrivate 
-                        ? 'Only your connections can see your posts'
-                        : 'Anyone can see your posts'
-                      }
-                    </div>
+                  <div className="profile-privacy-description">
+                    {formData.isPrivate 
+                      ? 'Only your connections can see your posts'
+                      : 'Anyone can see your posts'
+                    }
                   </div>
                 </div>
               </div>
             </div>
+          </div>
+          
+          {/* Edit/Save Buttons */}
+          <div className="profile-form-actions">
+            {!isEditing ? (
+              <button 
+                className="profile-edit-form-btn"
+                onClick={() => setIsEditing(true)}
+              >
+                ✏️ Edit Profile
+              </button>
+            ) : (
+              <div className="profile-edit-actions">
+                <button 
+                  className="profile-cancel-form-btn"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setFormData({
+                      name: user.name || "",
+                      email: user.email || "",
+                      contact: user.contact || "",
+                      bio: user.bio || "Passionate about technology and innovation. Always eager to learn and grow.",
+                      skills: user.skills || ["JavaScript", "React", "Node.js", "Python"],
+                      newSkill: "",
+                      studentId: user.studentId || "",
+                      department: user.department || "",
+                      year: user.year || "",
+                      employeeId: user.employeeId || "",
+                      facultyDepartment: user.facultyDepartment || "",
+                      designation: user.designation || "",
+                      profilePhoto: user.profilePhoto || null,
+                      isPrivate: Boolean(user.isPrivate) 
+                    });
+                    setPhotoPreview(user.profilePhoto || null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="profile-save-form-btn"
+                  onClick={handleUpdateProfile}
+                  disabled={loading || uploadingPhoto}
+                >
+                  {loading ? '💾 Saving...' : '💾 Save Changes'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1581,142 +1479,223 @@ const handleSaveEdit = async () => {
   );
 
   return (
-    <div className="feed-container">
-      {/* Header */}
-      <header className="feed-header">
-        <div className="header-left">
-          <div className="logo" onClick={() => navigate("/feed")}>💼 Swish</div>
-          <div className="feed-search-wrapper">
-            <ExploreSearch onUserSelect={handleUserSelectFromSearch} />
-          </div>
-          <div className="nav-items">
-            <button className="nav-btn" onClick={() => navigate("/feed")}>🏠 Feed</button>
-            <button className="nav-btn active">👤 Profile</button>
-            <button className="nav-btn" onClick={() => navigate("/network")}>👥 Network</button>
-            <button className="nav-btn" onClick={() => navigate("/Explore")}>🔥 Explore</button>
-            <button 
-              className={`nav-btn notification-bell-btn`}
-              onClick={handleClickNotification}
-              title="Notifications"
-            >
-              🔔 Notifications
-              {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
-            </button>
-          </div>
-        </div>
-        <div className="header-right">
-          <div className="user-info">
-            <span className="user-name">Welcome, {user?.name || "User"}</span>
-            <div 
-              className="user-avatar" 
-              title="View Profile"
-              onClick={() => navigate("/profile")}
-            >
-              {getUserAvatar(user)}
-            </div>
-          </div>
-          {user?.role === 'admin' && (
-            <button className="admin-btn" onClick={() => navigate("/admin")}>👑 Admin</button>
-          )}
-          <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
-        </div>
-      </header>
+    <div className="profile-page-root">
+      {/* Use the same Navbar component */}
+      <Navbar />
 
       {/* Notifications */}
       {error && (
-        <div className="notification error">
+        <div className="profile-notification error">
           {error}
           <button onClick={() => setError("")}>×</button>
         </div>
       )}
       {success && (
-        <div className="notification success">
+        <div className="profile-notification success">
           {success}
           <button onClick={() => setSuccess("")}>×</button>
         </div>
       )}
 
-      <div className="profile-content">
-      
+      <div className="profile-layout-container">
+        {/* ========== LEFT SIDEBAR ========== */}
+        <div className="profile-sidebar profile-left-sidebar">
+          {/* Profile Mini Card */}
+          <div className="profile-mini-card">
+            <div className="profile-mini-avatar">
+              {getUserAvatar(user)}
+            </div>
+            <div className="profile-mini-info">
+              <h4>{user?.name || "User"}</h4>
+              <p className="profile-mini-title">
+                {getRoleDisplay()}
+              </p>
+              <p className="profile-mini-bio">
+                {user?.bio?.slice(0, 80) || "Complete your profile to get started!"}
+              </p>
+            </div>
+            <div className="profile-mini-stats">
+              <div className="profile-stats-grid">
+                <div className="profile-stat-item">
+                  <span className="profile-stat-number">{stats.connections}</span>
+                  <span className="profile-stat-label">Connections</span>
+                </div>
+                <div className="profile-stat-item">
+                  <span className="profile-stat-number">{stats.posts}</span>
+                  <span className="profile-stat-label">Posts</span>
+                </div>
+                <div className="profile-stat-item">
+                  <span className="profile-stat-number">{stats.likes}</span>
+                  <span className="profile-stat-label">Likes</span>
+                </div>
+                <div className="profile-stat-item">
+                  <span className="profile-stat-number">{userActivity.length}</span>
+                  <span className="profile-stat-label">Activities</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Profile Completion */}
+            <div className="profile-completion-section">
+              <div className="profile-completion-header">
+                <span>Profile Completion</span>
+                <span className="profile-completion-percentage">{profileCompletion}%</span>
+              </div>
+              <div className="profile-completion-bar">
+                <div 
+                  className="profile-completion-fill" 
+                  style={{ width: `${profileCompletion}%` }}
+                ></div>
+              </div>
+              <p className="profile-completion-hint">
+                Complete your profile to unlock all features
+              </p>
+            </div>
+          </div>
 
-        {/* Stats Dashboard */}
-        <div className="stats-dashboard">
-          <div className="stat-card">
-            <div className="stat-icon">👥</div>
-            <div className="stat-content">
-              <div className="stat-number">{stats.connections}</div>
-              <div className="stat-label">Connections</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">📝</div>
-            <div className="stat-content">
-              <div className="stat-number">{stats.posts}</div>
-              <div className="stat-label">Posts</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">👍</div>
-            <div className="stat-content">
-              <div className="stat-number">{stats.likes}</div>
-              <div className="stat-label">Likes Received</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">📊</div>
-            <div className="stat-content">
-              <div className="stat-number">{userActivity.length}</div>
-              <div className="stat-label">Activities</div>
+          {/* Quick Actions */}
+          <div className="profile-quick-actions-card">
+            <h3 className="profile-sidebar-title">
+              <span>⚡ Quick Actions</span>
+            </h3>
+            <div className="profile-quick-actions-grid">
+              <button className="profile-quick-action-btn" onClick={() => navigate("/feed")}>
+                <span className="profile-action-icon">📝</span>
+                <span>Create Post</span>
+              </button>
+              <button className="profile-quick-action-btn" onClick={() => navigate("/network")}>
+                <span className="profile-action-icon">👥</span>
+                <span>Network</span>
+              </button>
+              <button className="profile-quick-action-btn" onClick={() => setIsEditing(true)}>
+                <span className="profile-action-icon">✏️</span>
+                <span>Edit Profile</span>
+              </button>
+              <button className="profile-quick-action-btn" onClick={() => setActiveTab("posts")}>
+                <span className="profile-action-icon">📊</span>
+                <span>My Posts</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Profile Tabs */}
-        <div className="profile-tabs">
-          <div className="tabs-container">
-            <button 
-              className={`profile-tab ${activeTab === 'posts' ? 'active' : ''}`}
-              onClick={() => setActiveTab('posts')}
-            >
-              📝 My Posts ({userPosts.length})
-            </button>
-            <button 
-              className={`profile-tab ${activeTab === 'activity' ? 'active' : ''}`}
-              onClick={() => setActiveTab('activity')}
-            >
-              📊 My Activity ({userActivity.length})
-            </button>
-            <button 
-              className={`profile-tab ${activeTab === 'about' ? 'active' : ''}`}
-              onClick={() => setActiveTab('about')}
-            >
-              👤 About
-            </button>
+        {/* ========== MAIN CONTENT ========== */}
+        <div className="profile-main-wrapper">
+          <div className="profile-container">
+            {/* Profile Tabs */}
+            <div className="profile-tabs-container">
+              <div 
+                className={`profile-tab-item ${activeTab === 'posts' ? 'active' : ''}`}
+                onClick={() => setActiveTab('posts')}
+              >
+                <span className="profile-tab-icon">📝</span>
+                <span className="profile-tab-text">My Posts ({userPosts.length})</span>
+              </div>
+              <div 
+                className={`profile-tab-item ${activeTab === 'activity' ? 'active' : ''}`}
+                onClick={() => setActiveTab('activity')}
+              >
+                <span className="profile-tab-icon">📊</span>
+                <span className="profile-tab-text">My Activity ({userActivity.length})</span>
+              </div>
+              <div 
+                className={`profile-tab-item ${activeTab === 'about' ? 'active' : ''}`}
+                onClick={() => setActiveTab('about')}
+              >
+                <span className="profile-tab-icon">👤</span>
+                <span className="profile-tab-text">About</span>
+              </div>
+            </div>
+
+            {/* Tab Content */}
+            <div className="profile-tab-content-wrapper">
+              {activeTab === 'posts' && renderPostsTab()}
+              {activeTab === 'activity' && renderActivityTab()}
+              {activeTab === 'about' && renderAboutTab()}
+            </div>
           </div>
         </div>
 
-        {/* Tab Content */}
-        <div className="tab-content">
-          {activeTab === 'posts' && renderPostsTab()}
-          {activeTab === 'activity' && renderActivityTab()}
-          {activeTab === 'about' && renderAboutTab()}
-        </div>
-{/* Post Modal for Comments/Likes */}
-{postModalOpen && selectedPostForModal && (
-  <PostModal
-    post={selectedPostForModal}
-    currentUser={user}
-    users={allUsers}
-    onClose={closePostModal}
-    onAddComment={handleAddCommentFromModal}
-    onEditComment={handleEditCommentFromModal}
-    onDeleteComment={handleDeleteCommentFromModal}
-    onLikeComment={handleLikeCommentFromModal}
-    onLikePost={handleLikePost}
-  />
-)}
+        {/* ========== RIGHT SIDEBAR ========== */}
+        <div className="profile-sidebar profile-right-sidebar">
+          {/* Recent Activity */}
+          <div className="profile-analytics-card">
+            <h3 className="profile-sidebar-title">
+              <span>📈 Profile Analytics</span>
+            </h3>
+            
+            <div className="profile-suggestions-list">
+              {[
+                ["📝", "Posts Created", `${stats.posts} posts`],
+                ["👍", "Likes Received", `${stats.likes} likes`],
+                ["💬", "Comments Made", `${userActivity.filter(a => a.type === 'comment').length} comments`],
+                ["🔥", "Engagement Rate", `${stats.posts > 0 ? Math.round((stats.likes + userActivity.length) / stats.posts) : 0} per post`],
+              ].map(([icon, title, value], idx) => (
+                <div key={idx} className="profile-suggestion-item">
+                  <div className="profile-suggestion-avatar">
+                    <span>{icon}</span>
+                  </div>
+                  <div className="profile-suggestion-info">
+                    <h4>{title}</h4>
+                    <p className="profile-suggestion-meta">{value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
+          {/* Connections Preview */}
+          <div className="profile-analytics-card">
+            <h3 className="profile-sidebar-title">
+              <span>🤝 Connections</span>
+            </h3>
+            
+            <div className="profile-connections-preview">
+              <div className="profile-connections-grid">
+                {connections.slice(0, 6).map(connection => (
+                  <div 
+                    key={connection._id} 
+                    className="profile-connection-avatar"
+                    onClick={() => navigate(`/profile/${connection._id}`)}
+                    title={connection.name}
+                  >
+                    {getUserAvatar(connection)}
+                  </div>
+                ))}
+                {connections.length > 6 && (
+                  <div 
+                    className="profile-connection-avatar profile-more-connections"
+                    onClick={() => navigate("/network")}
+                  >
+                    +{connections.length - 6}
+                  </div>
+                )}
+              </div>
+              <button 
+                className="profile-view-all-connections"
+                onClick={() => navigate("/network")}
+              >
+                View All Connections →
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Post Modal for Comments/Likes */}
+      {postModalOpen && selectedPostForModal && (
+        <PostModal
+          post={selectedPostForModal}
+          currentUser={user}
+          users={allUsers}
+          onClose={closePostModal}
+          onAddComment={handleAddCommentFromModal}
+          onEditComment={handleEditCommentFromModal}
+          onDeleteComment={handleDeleteCommentFromModal}
+          onLikeComment={handleLikeCommentFromModal}
+          onLikePost={handleLikePost}
+        />
+      )}
     </div>
   );
 }
