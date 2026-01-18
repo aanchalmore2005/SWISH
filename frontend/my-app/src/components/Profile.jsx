@@ -7,7 +7,31 @@ import axios from "axios";
 import PostModal from "../components/PostModal";
 import Navbar from "../components/Navbar";
 
-// ==================== READ MORE COMPONENT ====================
+// ==================== SIMPLE READ MORE COMPONENT ====================
+const ReadMoreText = ({ text, limit = 120 }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!text) return null;
+
+  const isLong = text.length > limit;
+  const shortText = text.substring(0, limit);
+
+  return (
+    <p className="profile-post-text">
+      {expanded ? text : shortText}
+      {!expanded && isLong && (
+        <span
+          className="read-more-inline"
+          onClick={() => setExpanded(true)}
+        >
+          {" "}... Read more
+        </span>
+      )}
+    </p>
+  );
+};
+
+// ==================== ENHANCED READ MORE COMPONENT WITH PROPER FORMATTING ====================
 const ReadMore = ({ text, maxLength = 300, showFadeEffect = true }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
@@ -20,34 +44,56 @@ const ReadMore = ({ text, maxLength = 300, showFadeEffect = true }) => {
 
   if (!text) return null;
   
+  // Enhanced text cleaning with proper paragraph formatting
+  const formatText = (inputText) => {
+    if (!inputText) return '';
+    
+    // Replace multiple spaces with single space
+    let formatted = inputText.replace(/\s+/g, ' ').trim();
+    
+    // Handle line breaks: Convert \n\n to paragraph breaks, \n to line breaks
+    formatted = formatted.replace(/\n\n+/g, '</p><p>');
+    formatted = formatted.replace(/\n/g, '<br/>');
+    
+    // Wrap in paragraph tags if not already wrapped
+    if (!formatted.startsWith('<p>')) {
+      formatted = `<p>${formatted}</p>`;
+    }
+    
+    // Fix multiple consecutive paragraphs
+    formatted = formatted.replace(/<\/p><p>/g, '</p><p>');
+    
+    return formatted;
+  };
+  
+  const cleanText = text.replace(/\s+/g, ' ').trim();
+  
   // If text is already short, show full text
-  if (text.length <= maxLength) {
+  if (cleanText.length <= maxLength) {
     return (
       <div className="profile-read-more-container">
-        <p className="profile-post-text">
-          {text}
-        </p>
+        <div 
+          className="profile-post-text formatted-text"
+          dangerouslySetInnerHTML={{ __html: formatText(cleanText) }}
+        />
       </div>
     );
   }
   
-  const displayText = isExpanded ? text : text.substring(0, maxLength) + '...';
+  const displayText = isExpanded ? cleanText : cleanText.substring(0, maxLength) + '...';
   
   return (
     <div className={`profile-read-more-container ${isExpanded ? 'expanded' : 'collapsed'}`}>
-      <p className="profile-post-text">
-        {displayText}
+      <div 
+        className="profile-post-text formatted-text"
+        dangerouslySetInnerHTML={{ __html: formatText(displayText) }}
+      />
+      <div className="profile-read-more-actions">
         {!isExpanded && (
           <button 
             className="profile-read-more-btn"
             onClick={() => setIsExpanded(true)}
             aria-label="Read more"
-            style={{
-    color: '#a78bfa',
-    fontWeight: '700',
-    backgroundColor: 'rgba(167, 139, 250, 0.1)',
-    border: '1px solid rgba(167, 139, 250, 0.2)'
-  }}
           >
             Read more
           </button>
@@ -57,27 +103,21 @@ const ReadMore = ({ text, maxLength = 300, showFadeEffect = true }) => {
             className="profile-read-less-btn"
             onClick={() => setIsExpanded(false)}
             aria-label="Read less"
-            style={{
-    color: '#a78bfa',
-    fontWeight: '700',
-    backgroundColor: 'rgba(167, 139, 250, 0.1)',
-    border: '1px solid rgba(167, 139, 250, 0.2)'
-  }}
           >
             Show less
           </button>
         )}
-      </p>
+      </div>
     </div>
   );
 };
 
-
 // ==================== IMAGE CAROUSEL COMPONENT ====================
-const ImageCarousel = ({ images, videos }) => {
+const ImageCarousel = ({ images, videos, compact = false }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState(null);
   const [touchEndX, setTouchEndX] = useState(null);
+  const videoRef = useRef(null);
   
   // Combine images and videos into media array
   const media = [...(images || []), ...(videos || [])];
@@ -88,6 +128,10 @@ const ImageCarousel = ({ images, videos }) => {
   const totalSlides = media.length;
 
   const goToSlide = (index) => {
+    // Pause current video if playing
+    if (videoRef.current && !videoRef.current.paused) {
+      videoRef.current.pause();
+    }
     setCurrentIndex(index);
   };
 
@@ -129,15 +173,61 @@ const ImageCarousel = ({ images, videos }) => {
     setTouchEndX(null);
   };
 
+  // Handle click to next slide in compact mode
+  const handleSlideClick = () => {
+    if (compact && totalSlides > 1) {
+      nextSlide();
+    }
+  };
+
+  // Handle video error
+  const handleVideoError = (e) => {
+    console.error('Video failed to load:', e.target.error);
+    const video = e.target;
+    video.controls = false;
+    
+    // Show error message
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'video-error-message';
+    errorDiv.innerHTML = `
+      <div style="padding: 20px; text-align: center; color: white;">
+        <p>⚠️ Video cannot be played</p>
+        <p style="font-size: 12px; margin-top: 8px;">
+          <a href="${video.src}" target="_blank" style="color: #a78bfa; text-decoration: underline;">
+            Download Video
+          </a>
+        </p>
+      </div>
+    `;
+    
+    const parent = video.parentNode;
+    parent.innerHTML = '';
+    parent.appendChild(errorDiv);
+  };
+
+  // Get video MIME type based on format
+  const getVideoMimeType = (format) => {
+    if (!format) return 'video/mp4'; // Default to mp4
+    
+    format = format.toLowerCase();
+    if (format === 'mp4' || format === 'm4v') return 'video/mp4';
+    if (format === 'webm') return 'video/webm';
+    if (format === 'ogg' || format === 'ogv') return 'video/ogg';
+    if (format === 'mov') return 'video/quicktime';
+    if (format === 'avi') return 'video/x-msvideo';
+    return 'video/mp4';
+  };
+
   return (
-    <div className="linkedin-carousel profile-carousel">
+    <div className={`linkedin-carousel profile-carousel ${compact ? 'compact-mode' : ''}`}>
       <div 
-        className="carousel-container profile-carousel-container"
+        className={`carousel-container profile-carousel-container ${compact ? 'compact' : ''}`}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onClick={compact ? handleSlideClick : undefined}
       >
-        {totalSlides > 1 && (
+        {!compact && totalSlides > 1 && (
           <button 
             className="carousel-arrow left-arrow profile-carousel-arrow profile-left-arrow"
             onClick={prevSlide}
@@ -150,13 +240,33 @@ const ImageCarousel = ({ images, videos }) => {
         <div className="carousel-slide profile-carousel-slide">
           {isVideo(media[currentIndex]) ? (
             <div className="video-slide profile-video-slide">
-              <video
-                src={media[currentIndex].url}
-                className="carousel-video profile-carousel-video"
-                playsInline
-                preload="metadata"
-                controls
-              />
+              <div className="video-player-wrapper">
+                <video
+                  ref={videoRef}
+                  src={media[currentIndex].url}
+                  className="carousel-video profile-carousel-video"
+                  playsInline
+                  preload="metadata"
+                  controls
+                  controlsList="nodownload"
+                  onError={handleVideoError}
+                  style={{
+                    maxHeight: compact ? '180px' : '400px',
+                    objectFit: 'contain'
+                  }}
+                >
+                  <source 
+                    src={media[currentIndex].url} 
+                    type={getVideoMimeType(media[currentIndex].format)}
+                  />
+                  Your browser does not support the video tag.
+                </video>
+                <div className="video-overlay">
+                  <div className="play-button">
+                    ▶️
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <img
@@ -164,11 +274,15 @@ const ImageCarousel = ({ images, videos }) => {
               alt={`Slide ${currentIndex + 1}`}
               className="carousel-image profile-carousel-image"
               loading="lazy"
+              style={{
+                maxHeight: compact ? '180px' : '400px',
+                objectFit: 'contain'
+              }}
             />
           )}
         </div>
 
-        {totalSlides > 1 && (
+        {!compact && totalSlides > 1 && (
           <button 
             className="carousel-arrow right-arrow profile-carousel-arrow profile-right-arrow"
             onClick={nextSlide}
@@ -178,14 +292,14 @@ const ImageCarousel = ({ images, videos }) => {
           </button>
         )}
 
-        {totalSlides > 1 && (
+        {!compact && totalSlides > 1 && (
           <div className="image-counter profile-image-counter">
             {currentIndex + 1} / {totalSlides}
           </div>
         )}
       </div>
 
-      {totalSlides > 1 && (
+      {!compact && totalSlides > 1 && (
         <div className="carousel-dots profile-carousel-dots">
           {media.map((_, index) => (
             <button
@@ -197,9 +311,16 @@ const ImageCarousel = ({ images, videos }) => {
           ))}
         </div>
       )}
+
+      {compact && totalSlides > 1 && (
+        <div className="compact-slide-indicator">
+          {currentIndex + 1} / {totalSlides}
+        </div>
+      )}
     </div>
   );
 };
+
 function Profile() {
   const [postModalOpen, setPostModalOpen] = useState(false);
   const [selectedPostForModal, setSelectedPostForModal] = useState(null);
@@ -969,26 +1090,14 @@ function Profile() {
               </div>
             ) : (
               <div className="profile-post-content-full">
-                  <ReadMore text={selectedPost.content} maxLength={500} />
-                  
-                  {selectedPost.media && selectedPost.media.length > 0 && (
-                  <div className="profile-post-media-full">
-                    {selectedPost.media.map((media, index) => (
-                      media.type === 'image' ? (
-                        <img 
-                          key={index}
-                          src={media.url} 
-                          alt={`Post media ${index + 1}`}
-                          className="profile-post-media-image"
-                        />
-                      ) : (
-                        <div key={index} className="profile-post-media-video">
-                          <video controls className="profile-post-video-player">
-                            <source src={media.url} type={`video/${media.format}`} />
-                          </video>
-                        </div>
-                      )
-                    ))}
+                <ReadMore text={selectedPost.content} maxLength={500} />
+                
+                {selectedPost.media && selectedPost.media.length > 0 && (
+                  <div className="profile-post-media-full-wrapper">
+                    <ImageCarousel 
+                      images={selectedPost.media.filter(m => m.type === 'image')}
+                      videos={selectedPost.media.filter(m => m.type === 'video')}
+                    />
                   </div>
                 )}
                 
@@ -1143,24 +1252,15 @@ function Profile() {
                     </div>
                     
                     <div className="profile-post-content-mini">
-                        <ReadMore text={post.content} maxLength={120} showFadeEffect={false} />
-                        
-                        {post.media && post.media.length > 0 && (
-                        <div className="profile-post-media-mini">
-                          {post.media[0].type === 'image' ? (
-                            <img 
-                              src={post.media[0].url} 
-                              alt="Post media" 
-                              className="profile-post-media-thumbnail"
-                            />
-                          ) : (
-                            <div className="profile-video-thumbnail">
-                              <span>🎥 Video</span>
-                            </div>
-                          )}
-                          {post.media.length > 1 && (
-                            <div className="profile-media-count">+{post.media.length - 1} more</div>
-                          )}
+                      <ReadMore text={post.content} maxLength={120} showFadeEffect={false} />
+                      
+                      {post.media && post.media.length > 0 && (
+                        <div className="profile-post-media-mini-wrapper">
+                          <ImageCarousel 
+                            images={post.media.filter(m => m.type === 'image')}
+                            videos={post.media.filter(m => m.type === 'video')}
+                            compact={true}
+                          />
                         </div>
                       )}
                     </div>
@@ -1331,12 +1431,6 @@ function Profile() {
     <div className="profile-main-content">
       <div className="profile-tab-header">
         <h3>👤 Profile Information</h3>
-        {/* <button 
-          className="profile-edit-profile-tab-btn"
-          onClick={() => setIsEditing(!isEditing)}
-        >
-          {isEditing ? '✏️ Editing...' : '✏️ Edit Profile'}
-        </button> */}
       </div>
       
       <div className="profile-about-layout">
@@ -1673,7 +1767,6 @@ function Profile() {
 
   return (
     <div className="profile-page-root">
-      {/* Use the same Navbar component */}
       <Navbar />
 
       {/* Notifications */}
