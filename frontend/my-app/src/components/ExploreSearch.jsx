@@ -75,7 +75,7 @@ const ExploreSearch = ({ onUserSelect }) => {
             
             if (type === 'users') {
                 // User search
-                const url = `http://localhost:5000/api/users/search?name=${encodeURIComponent(value)}`;
+                const url = `${process.env.VITE_API_URL}/api/users/search?name=${encodeURIComponent(value)}`;
                 
                 console.log("📡 Making user search request to:", url);
                 console.log("📝 Search query:", value);
@@ -134,7 +134,7 @@ const ExploreSearch = ({ onUserSelect }) => {
                     searchQuery = searchQuery.substring(1);
                 }
                 
-                const url = `http://localhost:5000/api/posts/search?q=${encodeURIComponent(searchQuery)}`;
+                const url = `${process.env.VITE_API_URL}/api/posts/search?q=${encodeURIComponent(searchQuery)}`;
                 
                 console.log("🔍 Making post search request to:", url);
                 console.log("📝 Post search query:", searchQuery);
@@ -560,7 +560,7 @@ const ExploreSearch = ({ onUserSelect }) => {
         
         // Test user search
         try {
-            const userResponse = await fetch('http://localhost:5000/api/users/search?name=test', {
+            const userResponse = await fetch('${process.env.VITE_API_URL}/api/users/search?name=test', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json'
@@ -577,7 +577,7 @@ const ExploreSearch = ({ onUserSelect }) => {
         
         // Test post search
         try {
-            const postResponse = await fetch('http://localhost:5000/api/posts/search?q=test', {
+            const postResponse = await fetch('${process.env.VITE_API_URL}/api/posts/search?q=test', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json'

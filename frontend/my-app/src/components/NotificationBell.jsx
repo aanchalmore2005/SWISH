@@ -8,7 +8,7 @@ export function getSocket() {
     const token = localStorage.getItem("token");
     if (!token) return null;
 
-    socketInstance = io("http://localhost:5000", {
+    socketInstance = io("${process.env.VITE_API_URL}", {
       auth: { token }
     });
 
@@ -39,7 +39,7 @@ export function getSocket() {
 //     if (!token) return;
 
 //     // join socket and listen for count updates or new_notification
-//     socketInstance = io("http://localhost:5000", {
+//     socketInstance = io("${process.env.VITE_API_URL}", {
 //       auth: { token: token }
 //     });
 
@@ -53,7 +53,7 @@ export function getSocket() {
 //     });
 
 //     // fetch initial unread count
-//     fetch("http://localhost:5000/api/notifications/unread/count", {
+//     fetch("${process.env.VITE_API_URL}/api/notifications/unread/count", {
 //       headers: { Authorization: `Bearer ${token}` }
 //     })
 //     .then(res => res.json())
