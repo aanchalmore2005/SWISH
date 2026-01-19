@@ -6,6 +6,7 @@ import { getSocket } from "../components/NotificationBell";
 import Toast from "../components/Toast";
 import "../styles/Notifications.css";
 import ExploreSearch from "../components/ExploreSearch";
+import PostModal from './PostModal';
 
 // ==================== IMAGE CAROUSEL COMPONENT ====================
 const ImageCarousel = ({ images, videos }) => {
@@ -376,24 +377,56 @@ const ImageCarousel = ({ images, videos }) => {
   );
 };
 
-// Post Card Component
-const PostCard = forwardRef(({ post, currentUser, onLike, onComment, onSave, onFollow, isFollowing }, ref) => {
-  const [showComments, setShowComments] = useState(false);
+// ==================== READ MORE COMPONENT ====================
+const ReadMore = ({ text, maxLength = 300 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  if (!text || text.length <= maxLength) {
+    return <p>{text}</p>;
+  }
+  
+  const displayText = isExpanded ? text : text.substring(0, maxLength) + '...';
+  
+  return (
+    <div className="read-more-container">
+      <p className="post-text">
+        {displayText}
+        {!isExpanded && (
+          <span 
+            className="read-more-btn"
+            onClick={() => setIsExpanded(true)}
+          >
+            Read more
+          </span>
+        )}
+      </p>
+    </div>
+  );
+};
+
+// Post Card Component (UPDATED - Removed Save button, Added Share functionality)
+const PostCard = forwardRef(({ 
+  post, 
+  currentUser, 
+  onLike, 
+  onComment, 
+  onFollow, 
+  isFollowing, 
+  openPostModal,
+  openShareModal 
+}, ref) => {
   const [commentText, setCommentText] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
   const [localPost, setLocalPost] = useState(post);
   const [localLikes, setLocalLikes] = useState(post.likes || []);
   const [localComments, setLocalComments] = useState(post.comments || []);
-  const [localSaves, setLocalSaves] = useState(post.saves || []);
   const [isLiked, setIsLiked] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
   const [likesCount, setLikesCount] = useState(post.likes?.length || 0);
   const [commentsCount, setCommentsCount] = useState(post.comments?.length || 0);
-  const [savesCount, setSavesCount] = useState(post.saves?.length || 0);
   
   const navigate = useNavigate();
   
-  // Check if current user has liked/saved the post
+  // Check if current user has liked the post
   useEffect(() => {
     if (!currentUser || !post) return;
     
@@ -409,24 +442,10 @@ const PostCard = forwardRef(({ post, currentUser, onLike, onComment, onSave, onF
       return false;
     });
     
-    const userSaved = localSaves.some(save => {
-      if (typeof save === 'string') {
-        return save === currentUser.id || save === currentUser._id;
-      } else if (save && typeof save === 'object') {
-        return save._id === currentUser.id || 
-               save.userId === currentUser.id ||
-               save.userId === currentUser._id ||
-               save._id === currentUser._id;
-      }
-      return false;
-    });
-    
     setIsLiked(userLiked);
-    setIsSaved(userSaved);
     setLikesCount(localLikes.length);
     setCommentsCount(localComments.length);
-    setSavesCount(localSaves.length);
-  }, [currentUser, post, localLikes, localComments, localSaves]);
+  }, [currentUser, post, localLikes, localComments]);
   
   const handleLike = async () => {
     if (!currentUser) {
@@ -439,20 +458,6 @@ const PostCard = forwardRef(({ post, currentUser, onLike, onComment, onSave, onF
       setLocalLikes(updatedPost.likes || []);
       setIsLiked(!isLiked);
       setLikesCount(prev => isLiked ? prev - 1 : prev + 1);
-    }
-  };
-  
-  const handleSave = async () => {
-    if (!currentUser) {
-      navigate("/");
-      return;
-    }
-    const updatedPost = await onSave(localPost._id);
-    if (updatedPost) {
-      setLocalPost(updatedPost);
-      setLocalSaves(updatedPost.saves || []);
-      setIsSaved(!isSaved);
-      setSavesCount(prev => isSaved ? prev - 1 : prev + 1);
     }
   };
   
@@ -477,7 +482,6 @@ const PostCard = forwardRef(({ post, currentUser, onLike, onComment, onSave, onF
         setLocalComments(updatedPost.comments || []);
         setCommentsCount(prev => prev + 1);
         setCommentText("");
-        setShowComments(true);
       }
     } catch (error) {
       console.error("Error adding comment:", error);
@@ -504,6 +508,149 @@ const PostCard = forwardRef(({ post, currentUser, onLike, onComment, onSave, onF
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toString();
+  };
+  
+  // Check if user has RSVPed to an event
+  const getUserRSVPStatus = (post) => {
+    if (!post.event?.attendees || !currentUser) return null;
+    const userRSVP = post.event.attendees.find(a => a.userId === currentUser.id);
+    return userRSVP ? userRSVP.status : null;
+  };
+
+  // Check if user has voted in a poll
+  const getUserVoteStatus = (post) => {
+    if (!post.poll?.voters || !currentUser) return null;
+    return post.poll.voters.find(v => v.userId === currentUser.id);
+  };
+
+  // Render event card
+  const renderEventCard = (event) => {
+    if (!event) return null;
+    
+    const eventDate = new Date(event.dateTime);
+    const now = new Date();
+    const isPastEvent = eventDate < now;
+    
+    return (
+      <div className="event-card">
+        <div className="event-header">
+          <div className="event-title">{event.title}</div>
+          <div className="event-date-badge">
+            {eventDate.toLocaleDateString('en-US', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric' 
+            })}
+          </div>
+        </div>
+        
+        {event.description && (
+          <p className="event-description">{event.description}</p>
+        )}
+        
+        <div className="event-details">
+          <div className="event-detail">
+            <span className="event-icon">🕒</span>
+            <span>{eventDate.toLocaleTimeString('en-US', { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            })}</span>
+          </div>
+          
+          <div className="event-detail">
+            <span className="event-icon">📍</span>
+            <span>{event.location}</span>
+          </div>
+          
+          {event.maxAttendees && (
+            <div className="event-detail">
+              <span className="event-icon">👥</span>
+              <span>Max: {event.maxAttendees}</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="event-stats">
+          <div className="going-count">
+            <span className="going-badge">{event.rsvpCount || 0} going</span>
+            {event.maxAttendees && (
+              <span className="capacity">
+                ({event.attendees?.length || 0}/{event.maxAttendees})
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render poll card
+  const renderPollCard = (poll, postId) => {
+    if (!poll) return null;
+    
+    const userVote = getUserVoteStatus({ poll });
+    const totalVotes = poll.totalVotes || 0;
+    
+    return (
+      <div className="poll-card">
+        <div className="poll-header">
+          <div className="poll-title">{poll.question}</div>
+          <div className="poll-stats">
+            <span className="vote-count">{totalVotes} votes</span>
+          </div>
+        </div>
+        
+        <div className="poll-options-list">
+          {poll.options.map((option, index) => {
+            const percentage = totalVotes > 0 ? Math.round((option.votes / totalVotes) * 100) : 0;
+            const isUserVote = userVote?.optionIndex === index;
+            
+            return (
+              <div 
+                key={index} 
+                className={`poll-option-item ${isUserVote ? 'selected' : ''}`}
+                onClick={() => !userVote && handlePollVote(postId, index)}
+                style={{ cursor: userVote ? 'default' : 'pointer' }}
+              >
+                <div className="poll-option-radio">
+                  {isUserVote && <div className="selected-dot"></div>}
+                </div>
+                <div className="poll-option-text">{option.text}</div>
+                <div className="poll-option-percentage">{percentage}%</div>
+                
+                {totalVotes > 0 && (
+                  <div 
+                    className="poll-progress-bar"
+                    style={{ width: `${percentage}%` }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        
+        <div className="poll-footer">
+          {userVote ? (
+            <div className="voted-message">
+              ✅ You voted for "{poll.options[userVote.optionIndex]?.text}"
+            </div>
+          ) : (
+            <button 
+              className="vote-btn"
+              onClick={() => {}}
+              style={{ opacity: 0.6, cursor: 'default' }}
+            >
+              Click an option to vote
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const handlePollVote = async (postId, optionIndex) => {
+    // This function would be passed as a prop if needed
+    console.log('Voting on poll:', postId, optionIndex);
   };
   
   return (
@@ -559,18 +706,13 @@ const PostCard = forwardRef(({ post, currentUser, onLike, onComment, onSave, onF
       
       {/* Post Content */}
       <div className="post-content">
-        <p>{localPost.content}</p>
+        <ReadMore text={localPost.content} maxLength={300} />
         
-        {/* Hashtags */}
-        {localPost.content && localPost.content.includes('#') && (
-          <div className="hashtags">
-            {localPost.content.match(/#\w+/g)?.map((tag, index) => (
-              <span key={index} className="hashtag" onClick={() => navigate(`/explore/hashtag/${tag.replace('#', '')}`)}>
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* Display Event */}
+        {localPost.type === 'event' && localPost.event && renderEventCard(localPost.event)}
+        
+        {/* Display Poll */}
+        {localPost.type === 'poll' && localPost.poll && renderPollCard(localPost.poll, localPost._id)}
         
         {/* Media with Carousel */}
         {localPost.media && localPost.media.length > 0 && (
@@ -580,25 +722,62 @@ const PostCard = forwardRef(({ post, currentUser, onLike, onComment, onSave, onF
           />
         )}
         
-        {/* Category */}
-        {localPost.category && (
-          <div className="post-category">
-            <span className="category-badge">{localPost.category}</span>
+        {/* Legacy imageUrl support */}
+        {localPost.imageUrl && !localPost.media && (
+          <div className="post-image">
+            <img src={localPost.imageUrl} alt="Post content" />
           </div>
         )}
       </div>
+
+      {/* Event RSVP Buttons */}
+      {localPost.type === 'event' && localPost.event && (
+        <div className="event-actions">
+          {getUserRSVPStatus(localPost) === 'going' ? (
+            <div className="rsvp-status">
+              ✅ You're going to this event
+            </div>
+          ) : (
+            <>
+              <button 
+                className="event-btn rsvp-btn"
+                onClick={() => console.log('RSVP going:', localPost._id)}
+              >
+                ✅ Going
+              </button>
+              <button 
+                className="event-btn maybe-btn"
+                onClick={() => console.log('RSVP maybe:', localPost._id)}
+              >
+                🤔 Maybe
+              </button>
+            </>
+          )}
+        </div>
+      )}
       
       {/* Post Stats */}
       <div className="post-stats">
         <span className="stat-item">👍 {formatNumber(likesCount)}</span>
         <span className="stat-item">💬 {formatNumber(commentsCount)}</span>
-        <span className="stat-item">💾 {formatNumber(savesCount)}</span>
-        {localPost.tags && localPost.tags.length > 0 && (
-          <span className="stat-item"># {localPost.tags.length}</span>
+        {localPost.type === 'event' && localPost.event && (
+          <span className="stat-item">
+            👥 {localPost.event.rsvpCount || 0}
+          </span>
+        )}
+        {localPost.type === 'poll' && localPost.poll && (
+          <span className="stat-item">
+            📊 {localPost.poll.totalVotes || 0}
+          </span>
+        )}
+        {localPost.media && localPost.media.length > 0 && (
+          <span className="stat-item">
+            📷 {localPost.media.length}
+          </span>
         )}
       </div>
       
-      {/* Post Actions */}
+      {/* Post Actions - REMOVED SAVE BUTTON, ADDED SHARE */}
       <div className="post-actions-buttons">
         <button 
           className={`action-btn like-btn ${isLiked ? 'liked' : ''}`}
@@ -607,98 +786,41 @@ const PostCard = forwardRef(({ post, currentUser, onLike, onComment, onSave, onF
           {isLiked ? '❤️ Liked' : '🤍 Like'}
         </button>
         <button 
-          className={`action-btn comment-btn ${showComments ? 'active' : ''}`}
-          onClick={() => setShowComments(!showComments)}
+          className="action-btn comment-btn"
+          onClick={() => openPostModal(localPost)}
         >
           💬 Comment
         </button>
         <button 
-          className={`action-btn save-btn ${isSaved ? 'saved' : ''}`}
-          onClick={handleSave}
+          className="action-btn share-btn"
+          onClick={() => openShareModal(localPost)}
         >
-          {isSaved ? '💾 Saved' : '💾 Save'}
-        </button>
-        <button className="action-btn share-btn" onClick={() => {
-          if (navigator.share) {
-            navigator.share({
-              title: 'Check out this post on Swish',
-              text: localPost.content.substring(0, 100),
-              url: window.location.origin + `/post/${localPost._id}`
-            });
-          } else {
-            navigator.clipboard.writeText(window.location.origin + `/post/${localPost._id}`);
-            alert('Link copied to clipboard!');
-          }
-        }}>
           🔄 Share
         </button>
       </div>
       
-      {/* Comments Section */}
-      {showComments && (
-        <div className="comments-section">
-          {localComments.length > 0 ? (
-            <div className="comments-list">
-              <h4>Comments ({commentsCount})</h4>
-              {localComments.slice(0, 3).map((comment, index) => (
-                <div key={index} className="comment-item">
-                  <div className="comment-avatar">
-                    {comment.user?.name?.charAt(0).toUpperCase() || 
-                     comment.userName?.charAt(0).toUpperCase() || 
-                     "U"}
-                  </div>
-                  <div className="comment-content">
-                    <div className="comment-header">
-                      <span className="comment-author">
-                        {comment.user?.name || comment.userName || "Anonymous"}
-                      </span>
-                      <span className="comment-time">
-                        {new Date(comment.createdAt || comment.timestamp).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <p className="comment-text">{comment.content}</p>
-                  </div>
-                </div>
-              ))}
-              {localComments.length > 3 && (
-                <button 
-                  className="view-more-comments"
-                  onClick={() => navigate(`/post/${localPost._id}`)}
-                >
-                  View all {localComments.length} comments
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="no-comments">
-              <p>No comments yet. Be the first to comment!</p>
-            </div>
-          )}
-          
-          {/* Add Comment */}
-          <div className="add-comment">
-            <div className="comment-avatar-small">
-              {getUserAvatar(currentUser)}
-            </div>
-            <input 
-              type="text" 
-              placeholder="Write a comment..." 
-              className="comment-input"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
-              disabled={isCommenting}
-            />
-            <button 
-              className="comment-submit-btn"
-              onClick={handleAddComment}
-              disabled={isCommenting || !commentText.trim()}
-            >
-              {isCommenting ? '...' : 'Post'}
-            </button>
-          </div>
+      {/* Add Comment - Simplified version */}
+      <div className="add-comment">
+        <div className="comment-avatar-small">
+          {getUserAvatar(currentUser)}
         </div>
-      )}
+        <input 
+          type="text" 
+          placeholder="Write a comment..." 
+          className="comment-input"
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
+          disabled={isCommenting}
+        />
+        <button 
+          className="comment-submit-btn"
+          onClick={handleAddComment}
+          disabled={isCommenting || !commentText.trim()}
+        >
+          {isCommenting ? '...' : 'Post'}
+        </button>
+      </div>
     </div>
   );
 });
@@ -803,6 +925,24 @@ function Explore() {
   const [discoverUsers, setDiscoverUsers] = useState([]);
   const [trendingHashtags, setTrendingHashtags] = useState([]);
   
+  // New states for connections and posts
+  const [connections, setConnections] = useState([]);
+  const [connectionPosts, setConnectionPosts] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  
+  // Post Modal states (like Feed section)
+  const [postModalOpen, setPostModalOpen] = useState(false);
+  const [selectedPost, setSelectedPost] = useState(null);
+  
+  // SHARE STATES (like Feed section)
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [postToShare, setPostToShare] = useState(null);
+  const [shareConnections, setShareConnections] = useState([]);
+  const [selectedConnections, setSelectedConnections] = useState([]);
+  const [searchShareConnections, setSearchShareConnections] = useState("");
+  const [shareMessage, setShareMessage] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -857,6 +997,10 @@ function Explore() {
       
       fetchUserProfile(parsedUser.id, token);
       fetchUserStats(parsedUser.id, token);
+      
+      // NEW: Fetch connections and their posts
+      fetchConnections(token);
+      fetchAllUsers(token);
       
       // Initialize Socket for notifications
       const socket = getSocket();
@@ -935,6 +1079,196 @@ function Explore() {
       });
     }
   };
+  
+  // NEW: Fetch connections
+  const fetchConnections = async (token) => {
+    try {
+      const response = await fetch('http://localhost:5000/api/network/connections', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const connectionsList = data.connections || data || [];
+        setConnections(connectionsList);
+        
+        // Also set share connections
+        setShareConnections(connectionsList);
+        
+        // Fetch posts from connections
+        fetchConnectionPosts(connectionsList.map(conn => conn._id || conn.id), token);
+      }
+    } catch (error) {
+      console.error('Error fetching connections:', error);
+    }
+  };
+  
+  // NEW: Fetch posts from connections
+  const fetchConnectionPosts = async (connectionIds, token) => {
+    if (!connectionIds || connectionIds.length === 0) {
+      setConnectionPosts([]);
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/posts?connections=${connectionIds.join(',')}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setConnectionPosts(data);
+      }
+    } catch (error) {
+      console.error('Error fetching connection posts:', error);
+    }
+  };
+  
+  // NEW: Fetch all users for PostModal
+  const fetchAllUsers = async (token) => {
+    try {
+      const response = await fetch('http://localhost:5000/api/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const users = await response.json();
+        setAllUsers(users);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
+  
+  // ==================== SHARE FUNCTIONS (like Feed section) ====================
+  
+  // Open share modal for a post
+  const openShareModal = async (post) => {
+    console.log("📤 Opening share modal for post:", post._id);
+    
+    setPostToShare(post);
+    setSelectedConnections([]);
+    setSearchShareConnections("");
+    setShareMessage("");
+    setShareLoading(true);
+    setError("");
+    
+    try {
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch('http://localhost:5000/api/network/connections', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const connectionsList = data.connections || data || [];
+        setShareConnections(connectionsList);
+      } else {
+        const errorData = await response.json();
+        setError("Failed to load connections: " + (errorData.message || "Unknown error"));
+      }
+      
+      setShowShareModal(true);
+    } catch (error) {
+      setError("Failed to load connections: " + error.message);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  // Close share modal
+  const closeShareModal = () => {
+    setShowShareModal(false);
+    setPostToShare(null);
+    setSelectedConnections([]);
+    setSearchShareConnections("");
+    setShareMessage("");
+  };
+
+  // Toggle connection selection
+  const toggleConnectionSelect = (connectionId) => {
+    setSelectedConnections(prev => {
+      if (prev.includes(connectionId)) {
+        return prev.filter(id => id !== connectionId);
+      } else {
+        return [...prev, connectionId];
+      }
+    });
+  };
+
+  // Select all connections
+  const selectAllConnections = () => {
+    if (selectedConnections.length === shareConnections.length) {
+      setSelectedConnections([]);
+    } else {
+      const allConnectionIds = shareConnections.map(conn => conn._id || conn.id);
+      setSelectedConnections(allConnectionIds);
+    }
+  };
+
+  // Handle share post
+  const handleSharePost = async () => {
+    if (!postToShare || selectedConnections.length === 0) {
+      setError("Please select at least one connection to share with");
+      return;
+    }
+
+    setShareLoading(true);
+    setError("");
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch(`http://localhost:5000/api/posts/${postToShare._id}/share`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          connectionIds: selectedConnections,
+          message: shareMessage
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSuccess(`✅ Post shared with ${selectedConnections.length} connection(s)!`);
+        
+        // Refresh posts
+        if (activeTab === 'connections') {
+          fetchConnections(token);
+        }
+        
+        closeShareModal();
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        setError(data.message || 'Failed to share post. Please try again.');
+      }
+    } catch (error) {
+      setError('Network error: Unable to share post. Please check your connection.');
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  // Filter connections based on search
+  const filteredShareConnections = shareConnections.filter(conn => {
+    const searchLower = searchShareConnections.toLowerCase();
+    const connName = conn.name || '';
+    const connDepartment = conn.department || '';
+    const connRole = conn.role || '';
+    const connEmail = conn.email || '';
+    
+    return (
+      connName.toLowerCase().includes(searchLower) ||
+      connDepartment.toLowerCase().includes(searchLower) ||
+      connRole.toLowerCase().includes(searchLower) ||
+      connEmail.toLowerCase().includes(searchLower)
+    );
+  });
   
   // Fetch trending posts
   const fetchTrendingPosts = useCallback(async () => {
@@ -1254,47 +1588,6 @@ function Explore() {
     }
   };
   
-  // Handle save
-  const handleSave = async (postId) => {
-    if (!user) {
-      navigate("/");
-      return null;
-    }
-    
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/posts/${postId}/save`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (response.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        navigate("/");
-        return null;
-      }
-      
-      if (response.ok) {
-        const updatedPost = await response.json();
-        setSuccess('Post saved!');
-        setTimeout(() => setSuccess(""), 2000);
-        return updatedPost;
-      } else {
-        const errorData = await response.json();
-        setSuccess('Save feature will be available soon!');
-        setTimeout(() => setSuccess(""), 2000);
-        return null;
-      }
-    } catch (error) {
-      console.log('Save feature not implemented yet');
-      return null;
-    }
-  };
-  
   // Handle follow
   const handleFollow = async (userId) => {
     if (!user) {
@@ -1418,6 +1711,18 @@ function Explore() {
     } finally {
       setLoading(false);
     }
+  };
+  
+  // NEW: Open post modal with comments and likes (like Feed section)
+  const openPostModal = (post) => {
+    setSelectedPost(post);
+    setPostModalOpen(true);
+  };
+
+  // NEW: Close post modal
+  const closePostModal = () => {
+    setSelectedPost(null);
+    setPostModalOpen(false);
   };
   
   // Infinite scroll observer
@@ -1575,7 +1880,7 @@ function Explore() {
                   <span className="explore-stat-label">Following</span>
                 </div>
                 <div className="explore-stat-item">
-                  <span className="explore-stat-number">{userStats.connections}</span>
+                  <span className="explore-stat-number">{connections.length}</span>
                   <span className="explore-stat-label">Connections</span>
                 </div>
               </div>
@@ -1656,7 +1961,7 @@ function Explore() {
             <div className="explore-content-header">
               <h2 className="explore-content-title">
                 Explore Content
-                {trendingPosts.length > 0 && <span className="explore-title-badge">{trendingPosts.length} trending</span>}
+                {connectionPosts.length > 0 && <span className="explore-title-badge">{connectionPosts.length} from connections</span>}
               </h2>
               <div className="explore-header-actions">
                 <button className="explore-feature-btn" onClick={() => {
@@ -1694,6 +1999,14 @@ function Explore() {
 
             {/* Explore Tabs */}
             <div className="explore-tabs-container">
+              <div 
+                className={`explore-tab-item ${activeTab === 'connections' ? 'active' : ''}`} 
+                onClick={() => { setActiveTab('connections'); setSearchQuery(''); }}
+              >
+                <span className="explore-tab-icon">👥</span>
+                <span className="explore-tab-text">Connections</span>
+              </div>
+
               <div 
                 className={`explore-tab-item ${activeTab === 'trending' ? 'active' : ''}`} 
                 onClick={() => { setActiveTab('trending'); setSearchQuery(''); }}
@@ -1753,6 +2066,39 @@ function Explore() {
                     </div>
                   </div>
                 ))
+              ) : activeTab === 'connections' ? (
+                // Connections Posts - LIKE FEED SECTION
+                <>
+                  {connectionPosts.length > 0 ? (
+                    connectionPosts.map((post, index) => (
+                      <PostCard
+                        key={post._id}
+                        ref={index === connectionPosts.length - 1 ? lastPostRef : null}
+                        post={post}
+                        currentUser={user}
+                        onLike={handleLike}
+                        onFollow={handleFollow}
+                        onComment={handleComment}
+                        isFollowing={following[post.user?._id || post.userId]}
+                        openPostModal={openPostModal}
+                        openShareModal={openShareModal}
+                      />
+                    ))
+                  ) : (
+                    <div className="explore-empty-state">
+                      <div className="explore-empty-icon">👥</div>
+                      <h3>No connection posts yet</h3>
+                      <p>Connect with more people to see their posts here!</p>
+                      <button 
+                        className="explore-connect-btn"
+                        onClick={() => navigate("/network")}
+                        style={{marginTop: '20px', maxWidth: '200px'}}
+                      >
+                        👥 Find Connections
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : activeTab === 'search' && getCurrentUsers().length > 0 ? (
                 // Search Results - Users
                 <div className="search-results">
@@ -1780,10 +2126,11 @@ function Explore() {
                           post={post}
                           currentUser={user}
                           onLike={handleLike}
-                          onSave={handleSave}
                           onFollow={handleFollow}
                           onComment={handleComment}
                           isFollowing={following[post.user?._id || post.userId]}
+                          openPostModal={openPostModal}
+                          openShareModal={openShareModal}
                         />
                       ))}
                     </>
@@ -1799,10 +2146,11 @@ function Explore() {
                       post={post}
                       currentUser={user}
                       onLike={handleLike}
-                      onSave={handleSave}
                       onFollow={handleFollow}
                       onComment={handleComment}
                       isFollowing={following[post.user?._id || post.userId]}
+                      openPostModal={openPostModal}
+                      openShareModal={openShareModal}
                     />
                   ))}
                   
@@ -1961,8 +2309,8 @@ function Explore() {
                   <span className="explore-stat-label">People</span>
                 </div>
                 <div className="explore-stat-item">
-                  <span className="explore-stat-number">{trendingHashtags.length}</span>
-                  <span className="explore-stat-label">Hashtags</span>
+                  <span className="explore-stat-number">{connections.length}</span>
+                  <span className="explore-stat-label">Connections</span>
                 </div>
               </div>
             </div>
@@ -2003,6 +2351,169 @@ function Explore() {
           )}
         </div>
       </div>
+
+      {/* Post Modal (like Feed section) */}
+      {postModalOpen && selectedPost && (
+        <PostModal
+          post={selectedPost}
+          currentUser={user}
+          users={allUsers}
+          onClose={closePostModal}
+          onAddComment={handleComment}
+          onLike={handleLike}
+        />
+      )}
+
+      {/* Share Modal (like Feed section) */}
+      {showShareModal && postToShare && (
+        <div className="network-modal-overlay" onClick={closeShareModal}>
+          <div className="network-analytics-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px' }}>
+            <div className="network-modal-header">
+              <h3>Share Post</h3>
+              <button 
+                className="network-modal-close" 
+                onClick={closeShareModal}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="network-modal-body">
+              <div className="share-post-preview">
+                <div className="share-post-header">
+                  <div className="share-post-user">
+                    <div className="share-post-avatar">
+                      {getUserAvatar(postToShare.user)}
+                    </div>
+                    <div>
+                      <div className="share-post-username">
+                        {postToShare.user?.name || "Unknown User"}
+                      </div>
+                      <div className="share-post-time">
+                        {new Date(postToShare.createdAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="share-post-text">
+                    {postToShare.content.length > 150 
+                      ? postToShare.content.substring(0, 150) + '...'
+                      : postToShare.content}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="share-message-section">
+                <label>Add a message (optional):</label>
+                <textarea
+                  placeholder="Say something about this post..."
+                  value={shareMessage}
+                  onChange={(e) => setShareMessage(e.target.value)}
+                  maxLength={200}
+                  rows={3}
+                />
+                <div className="char-count-share">
+                  {shareMessage.length}/200
+                </div>
+              </div>
+              
+              <div className="share-connections-section">
+                <div className="share-section-header">
+                  <h4>Share with Connections</h4>
+                  <div className="connections-search">
+                    <input
+                      type="text"
+                      placeholder="Search connections by name, department, or email..."
+                      value={searchShareConnections}
+                      onChange={(e) => setSearchShareConnections(e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <div className="select-all-connections">
+                  <label className="select-all-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedConnections.length === shareConnections.length && shareConnections.length > 0}
+                      onChange={selectAllConnections}
+                    />
+                    <span>Select All</span>
+                  </label>
+                  <span className="selected-count">
+                    {selectedConnections.length} selected
+                  </span>
+                </div>
+                
+                <div className="connections-list">
+                  {shareLoading ? (
+                    <div className="loading-connections">
+                      Loading connections...
+                    </div>
+                  ) : filteredShareConnections.length > 0 ? (
+                    filteredShareConnections.map(conn => (
+                      <div 
+                        key={conn._id || conn.id} 
+                        className={`connection-item ${selectedConnections.includes(conn._id || conn.id) ? 'selected' : ''}`}
+                      >
+                        <label className="connection-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={selectedConnections.includes(conn._id || conn.id)}
+                            onChange={() => toggleConnectionSelect(conn._id || conn.id)}
+                          />
+                          <div className="connection-avatar">
+                            {conn.profilePhoto ? (
+                              <img 
+                                src={conn.profilePhoto} 
+                                alt={conn.name} 
+                              />
+                            ) : (
+                              <div className="avatar-placeholder">
+                                {conn.name?.charAt(0).toUpperCase() || 'U'}
+                              </div>
+                            )}
+                          </div>
+                          <div className="connection-details">
+                            <div className="connection-name">
+                              {conn.name || 'Unknown User'}
+                            </div>
+                            <div className="connection-meta">
+                              {conn.department && <span>{conn.department}</span>}
+                              {conn.role && <span>{conn.role}</span>}
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="no-connections">
+                      {searchShareConnections ? 'No connections match your search' : 'No connections found'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="network-modal-actions">
+              <button 
+                className="network-modal-btn cancel" 
+                onClick={closeShareModal}
+              >
+                Cancel
+              </button>
+              <button 
+                className="network-modal-btn confirm"
+                onClick={handleSharePost}
+                disabled={selectedConnections.length === 0 || shareLoading}
+              >
+                {shareLoading ? 'Sharing...' : `Share with ${selectedConnections.length} connection(s)`}
+              </button>
+            </div>
+          </div>
+        </div>    
+      )}
     </div>
   );
 }
