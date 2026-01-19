@@ -1581,7 +1581,7 @@ const ProfilePage = () => {
                           </button>
                           <button 
                             className="action-btn share-btn"
-                            onClick={() => handleSharePost(post)}
+                            onClick={() => openShareModal(post)}  
                           >
                             🔄 Share
                           </button>
@@ -1733,6 +1733,157 @@ const ProfilePage = () => {
           </div>
         </div>
       )}
+
+      {/* Share Modal - EXACTLY like Feed.jsx */}
+{showShareModal && postToShare && (
+  <div className="network-modal-overlay" onClick={closeShareModal}>
+    <div className="network-analytics-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px' }}>
+      <div className="network-modal-header">
+        <h3>Share Post</h3>
+        <button 
+          className="network-modal-close" 
+          onClick={closeShareModal}
+        >
+          ×
+        </button>
+      </div>
+      
+      <div className="network-modal-body">
+        <div className="share-post-preview">
+          <div className="share-post-header">
+            <div className="share-post-user">
+              <div className="share-post-avatar">
+                {getUserAvatar(postToShare.user)}
+              </div>
+              <div>
+                <div className="share-post-username">
+                  {postToShare.user?.name || "Unknown User"}
+                </div>
+                <div className="share-post-time">
+                  {new Date(postToShare.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric'
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="share-post-text">
+              {postToShare.content.length > 150 
+                ? postToShare.content.substring(0, 150) + '...'
+                : postToShare.content}
+            </div>
+          </div>
+        </div>
+        
+        <div className="share-message-section">
+          <label>Add a message (optional):</label>
+          <textarea
+            placeholder="Say something about this post..."
+            value={shareMessage}
+            onChange={(e) => setShareMessage(e.target.value)}
+            maxLength={200}
+            rows={3}
+          />
+          <div className="char-count-share">
+            {shareMessage.length}/200
+          </div>
+        </div>
+        
+        <div className="share-connections-section">
+          <div className="share-section-header">
+            <h4>Share with Connections</h4>
+            <div className="connections-search">
+              <input
+                type="text"
+                placeholder="Search connections by name, department, or email..."
+                value={searchConnections}
+                onChange={(e) => setSearchConnections(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <div className="select-all-connections">
+            <label className="select-all-checkbox">
+              <input
+                type="checkbox"
+                checked={selectedConnections.length === connections.length && connections.length > 0}
+                onChange={selectAllConnections}
+              />
+              <span>Select All</span>
+            </label>
+            <span className="selected-count">
+              {selectedConnections.length} selected
+            </span>
+          </div>
+          
+          <div className="connections-list">
+            {shareLoading ? (
+              <div className="loading-connections">
+                Loading connections...
+              </div>
+            ) : filteredConnections.length > 0 ? (
+              filteredConnections.map(conn => (
+                <div 
+                  key={conn._id || conn.id} 
+                  className={`connection-item ${selectedConnections.includes(conn._id || conn.id) ? 'selected' : ''}`}
+                >
+                  <label className="connection-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedConnections.includes(conn._id || conn.id)}
+                      onChange={() => toggleConnectionSelect(conn._id || conn.id)}
+                    />
+                    <div className="connection-avatar">
+                      {conn.profilePhoto ? (
+                        <img 
+                          src={conn.profilePhoto} 
+                          alt={conn.name} 
+                        />
+                      ) : (
+                        <div className="avatar-placeholder">
+                          {conn.name?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                      )}
+                    </div>
+                    <div className="connection-details">
+                      <div className="connection-name">
+                        {conn.name || 'Unknown User'}
+                      </div>
+                      <div className="connection-meta">
+                        {conn.department && <span>{conn.department}</span>}
+                        {conn.role && <span>{conn.role}</span>}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              ))
+            ) : (
+              <div className="no-connections">
+                {searchConnections ? 'No connections match your search' : 'No connections found'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      <div className="network-modal-actions">
+        <button 
+          className="network-modal-btn cancel" 
+          onClick={closeShareModal}
+        >
+          Cancel
+        </button>
+        <button 
+          className="network-modal-btn confirm"
+          onClick={handleSharePost}
+          disabled={selectedConnections.length === 0 || shareLoading}
+        >
+          {shareLoading ? 'Sharing...' : `Share with ${selectedConnections.length} connection(s)`}
+        </button>
+      </div>
+    </div>
+  </div>    
+)}
     </div>
   );
 };
