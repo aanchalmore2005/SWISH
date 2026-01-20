@@ -6,7 +6,7 @@ Swish is a **full-stack MERN web application** built to bring the experience of 
 
 The platform mirrors the fast, visual, and engaging nature of popular social apps—designed specifically for campus communities.
 
-**Project Code:** SOC-WEB-2025-094
+
 
 ---
 
