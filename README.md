@@ -44,7 +44,7 @@ The platform mirrors the fast, visual, and engaging nature of popular social app
 
 ### Media Handling
 
-* Multer / Cloudinary (for image & video uploads)
+* Multer & Cloudinary (for image & video uploads)
 
 ### Deployment
 
