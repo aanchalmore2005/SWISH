@@ -44,7 +44,7 @@ The platform mirrors the fast, visual, and engaging nature of popular social app
 
 ### Media Handling
 
-* Multer and Cloudinary (for image & video uploads)
+* Multer / Cloudinary (for image & video uploads)
 
 ### Deployment
 
@@ -109,15 +109,43 @@ npm start
 
 ## 🔑 Environment Variables
 
-Create a `.env` file in the backend directory and add:
+Below are the **correct and professional environment variable formats** to be shared **publicly**. These use **placeholders only** and match your actual setup.
 
-```
+---
+
+### 🔐 Backend (`/backend/.env`)
+
+```env
 PORT=5000
-MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_secret_key
+NODE_ENV=development
+
+# Database
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-name>.mongodb.net/<database-name>?retryWrites=true&w=majority
+
+# Authentication
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRE=30d
+
+# Cloudinary (Media Uploads)
+CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
+
+# File Upload Limits (MB)
+MAX_FILE_SIZE=your_max_file_size
 ```
 
 ---
+
+### 🌐 Frontend (`/frontend/my-app/.env` – Vite)
+
+```env
+# Backend API Base URL
+VITE_API_URL=https://your-backend-domain.com
+```
+
+
+
 
 ## 🎯 Future Enhancements
 
