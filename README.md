@@ -129,10 +129,10 @@ JWT_SECRET=your_secret_key
 
 ## 👩‍💻 Author
 
-**Aanchal More (aanchalmore2005)**
-**Sayali Bhanage (Sayali2611)**
-**Anjali Bhalkhede (Anjali200306)**
-**Bhupati Sharma (bhupatisharma)**
+* **Aanchal More (aanchalmore2005)**
+* **Sayali Bhanage (Sayali2611)**
+* **Anjali Bhalkhede (Anjali200306)**
+* **Bhupati Sharma (bhupatisharma)**
 
 ---
 
